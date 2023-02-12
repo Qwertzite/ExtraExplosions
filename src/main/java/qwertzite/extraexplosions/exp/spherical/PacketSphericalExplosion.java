@@ -1,4 +1,4 @@
-package qwertzite.extraexplosions.exp.dummy;
+package qwertzite.extraexplosions.exp.spherical;
 
 import java.util.List;
 
@@ -13,7 +13,7 @@ import net.minecraftforge.network.NetworkEvent.Context;
 import qwertzite.extraexplosions.core.network.AbstractPacket;
 import qwertzite.extraexplosions.core.network.PacketToClient;
 
-public class PacketDummyExplosion extends AbstractPacket implements PacketToClient {
+public class PacketSphericalExplosion extends AbstractPacket implements PacketToClient {
 
 	private double posX;
 	private double posY;
@@ -24,27 +24,27 @@ public class PacketDummyExplosion extends AbstractPacket implements PacketToClie
 	private float motionY;
 	private float motionZ;
 	
-	public PacketDummyExplosion() {}
-
-	public PacketDummyExplosion(double xIn, double yIn, double zIn, float strengthIn,
+	public PacketSphericalExplosion() {}
+	
+	public PacketSphericalExplosion(double xIn, double yIn, double zIn, float strengthIn,
 			List<BlockPos> affectedBlockPositionsIn, Vec3 motion) {
 		this.posX = xIn;
 		this.posY = yIn;
 		this.posZ = zIn;
 		this.strength = strengthIn;
 		this.affectedBlockPositions = Lists.newArrayList(affectedBlockPositionsIn);
-
+		
 		if (motion != null) {
 			this.motionX = (float) motion.x;
 			this.motionY = (float) motion.y;
 			this.motionZ = (float) motion.z;
 		}
 	}
-
+	
 	@Override
 	public AbstractPacket handleClientSide(Player player, Context ctx) {
-		DummyExplosion explosion = new DummyExplosion(player.getLevel(), (Entity) null, this.posX, this.posY,
-				this.posZ, this.strength, this.affectedBlockPositions);
+		var explosion = new SphericalExplosion(player.getLevel(), (Entity) null, this.posX, this.posY,
+				this.posZ, this.strength, null, this.affectedBlockPositions);
 		explosion.finalizeExplosion(true);
 		player.setDeltaMovement(motionX, motionY, motionZ);
 		return null;

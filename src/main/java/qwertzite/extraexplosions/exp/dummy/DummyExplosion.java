@@ -1,4 +1,4 @@
-package qwertzite.extraexplosions.exp.nodamage;
+package qwertzite.extraexplosions.exp.dummy;
 
 import java.util.List;
 import java.util.Optional;
