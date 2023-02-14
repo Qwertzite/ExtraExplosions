@@ -8,6 +8,7 @@ import qwertzite.extraexplosions.exp.dummy.CommandDummyExplosion;
 import qwertzite.extraexplosions.exp.dummy.PacketDummyExplosion;
 import qwertzite.extraexplosions.exp.spherical.CommandSphericalExplosion;
 import qwertzite.extraexplosions.exp.spherical.PacketSphericalExplosion;
+import qwertzite.extraexplosions.exp.vanilla.CommandVanillaExplosion;
 
 public class BootstrapCommon {
 	
@@ -17,6 +18,7 @@ public class BootstrapCommon {
 		ModNetwork.registerPacket(PacketDummyExplosion.class);
 		ModNetwork.registerPacket(PacketSphericalExplosion.class);
 		
+		new CommandVanillaExplosion().init();
 		new CommandDummyExplosion().init();
 		new CommandSphericalExplosion().init();
 	}

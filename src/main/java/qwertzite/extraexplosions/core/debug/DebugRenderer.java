@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.core.debug;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -18,6 +19,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import qwertzite.extraexplosions.exp.spherical.RayTrigonal;
+import qwertzite.extraexplosions.exp.spherical.SphericalExplosion.ExplosionRay;
 
 public class DebugRenderer {
 	
@@ -29,15 +31,16 @@ public class DebugRenderer {
 		}
 	}
 	
-	public static void addRays(Set<RayTrigonal> rays) {
-		synchronized (RAY_TRIAGONALS) {
-			RAY_TRIAGONALS.addAll(rays);
-		}
+	public static void addRays(Set<ExplosionRay> rays) {
+//		synchronized (RAY_TRIAGONALS) {
+//			RAY_TRIAGONALS.addAll(rays.stream().map(exp -> exp.trigonal()).collect(Collectors.toSet()));
+//		}
 	}
 	
 	@SubscribeEvent
 	public void onRenderEven(RenderLevelStageEvent event) {
-		if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_SOLID_BLOCKS) return;
+		if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
+		if (RAY_TRIAGONALS.isEmpty()) return; 
 		
 		PoseStack pose = event.getPoseStack();
 		pose.pushPose();

@@ -1,5 +1,10 @@
 package qwertzite.extraexplosions.exp.spherical;
 
+import java.util.stream.Stream;
+
+import com.mojang.math.Matrix4f;
+import com.mojang.math.Quaternion;
+
 import net.minecraft.world.phys.Vec3;
 import qwertzite.extraexplosions.util.math.EeMath;
 
@@ -61,6 +66,13 @@ public record RayTrigonal(Vec3 origin, Vec3 v1, Vec3 v2, Vec3 v3, Vec3 from, Vec
 	}
 	
 	public static RayTrigonal[] createInitialSphere(Vec3 centre, double radius, int division) {
+		var rotMatrix = new Matrix4f();
+		// COMEBACK: 回転させてランダムにする
+		
+//		var origin = Stream.of(ORIGIN)
+//				.map(o -> rotMatrix.)
+//				.toArray(i -> new RayTrigonal[i]);
+		
 		RayTrigonal[] result = ORIGIN;
 		for (int i = 0; i < division; i++) {
 			int len = result.length;

@@ -80,9 +80,9 @@ public class ExtraExplosions {
 		return explosion;
 	}
 	
-	public static Explosion sphericalExplosion(Level world, @Nullable Entity entity, double x, double y, double z, float strength, BlockInteraction interaction) {
+	public static Explosion sphericalExplosion(Level world, @Nullable Entity entity, double x, double y, double z, float strength, boolean fire, BlockInteraction interaction) {
 		boolean remote = world.isClientSide();
-		var explosion = new SphericalExplosion(world, entity, x, y, z, strength, interaction);
+		var explosion = new SphericalExplosion(world, entity, x, y, z, strength, fire, interaction);
 		if (net.minecraftforge.event.ForgeEventFactory.onExplosionStart(world, explosion)) return explosion;
 		explosion.explode();
 		explosion.finalizeExplosion(remote);
@@ -91,7 +91,7 @@ public class ExtraExplosions {
 			ServerLevel level = (ServerLevel) world;
 			for (ServerPlayer serverplayer : level.players()) {
 				if (serverplayer.distanceToSqr(x, y, z) < 4096.0D) {
-					ModNetwork.sendTo(serverplayer, new PacketSphericalExplosion(x, y, z, strength, explosion.getToBlow(), null));
+					ModNetwork.sendTo(serverplayer, new PacketSphericalExplosion(x, y, z, strength, fire, explosion.getToBlow(), null));
 				}
 			}
 		}

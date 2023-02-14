@@ -19,6 +19,7 @@ public class PacketSphericalExplosion extends AbstractPacket implements PacketTo
 	private double posY;
 	private double posZ;
 	private float strength;
+	private boolean fire;
 	private List<BlockPos> affectedBlockPositions;
 	private float motionX;
 	private float motionY;
@@ -26,12 +27,13 @@ public class PacketSphericalExplosion extends AbstractPacket implements PacketTo
 	
 	public PacketSphericalExplosion() {}
 	
-	public PacketSphericalExplosion(double xIn, double yIn, double zIn, float strengthIn,
+	public PacketSphericalExplosion(double xIn, double yIn, double zIn, float strengthIn, boolean fire,
 			List<BlockPos> affectedBlockPositionsIn, Vec3 motion) {
 		this.posX = xIn;
 		this.posY = yIn;
 		this.posZ = zIn;
 		this.strength = strengthIn;
+		this.fire = fire;
 		this.affectedBlockPositions = Lists.newArrayList(affectedBlockPositionsIn);
 		
 		if (motion != null) {
@@ -44,7 +46,7 @@ public class PacketSphericalExplosion extends AbstractPacket implements PacketTo
 	@Override
 	public AbstractPacket handleClientSide(Player player, Context ctx) {
 		var explosion = new SphericalExplosion(player.getLevel(), (Entity) null, this.posX, this.posY,
-				this.posZ, this.strength, null, this.affectedBlockPositions);
+				this.posZ, this.strength, this.fire, null, this.affectedBlockPositions);
 		explosion.finalizeExplosion(true);
 		player.setDeltaMovement(motionX, motionY, motionZ);
 		return null;
@@ -56,6 +58,7 @@ public class PacketSphericalExplosion extends AbstractPacket implements PacketTo
 		buf.writeFloat((float) this.posY);
 		buf.writeFloat((float) this.posZ);
 		buf.writeFloat(this.strength);
+		buf.writeBoolean(this.fire);
 		buf.writeInt(this.affectedBlockPositions.size());
 		int i = (int) this.posX;
 		int j = (int) this.posY;
@@ -81,6 +84,7 @@ public class PacketSphericalExplosion extends AbstractPacket implements PacketTo
 		this.posY = (double) buf.readFloat();
 		this.posZ = (double) buf.readFloat();
 		this.strength = buf.readFloat();
+		this.fire = buf.readBoolean();
 		int i = buf.readInt();
 		this.affectedBlockPositions = Lists.<BlockPos>newArrayListWithCapacity(i);
 		int j = (int) this.posX;
