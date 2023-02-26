@@ -24,6 +24,7 @@ import qwertzite.extraexplosions.exp.spherical.SphericalExplosion.ExplosionRay;
 public class DebugRenderer {
 	
 	private static final Set<RayTrigonal> RAY_TRIAGONALS = new HashSet<>();
+	public static boolean render = false;
 	
 	public static void clearRays() {
 		synchronized (RAY_TRIAGONALS) {
@@ -32,14 +33,15 @@ public class DebugRenderer {
 	}
 	
 	public static void addRays(Set<ExplosionRay> rays) {
-//		synchronized (RAY_TRIAGONALS) {
-//			RAY_TRIAGONALS.addAll(rays.stream().map(exp -> exp.trigonal()).collect(Collectors.toSet()));
-//		}
+		synchronized (RAY_TRIAGONALS) {
+			RAY_TRIAGONALS.addAll(rays.stream().map(exp -> exp.trigonal()).collect(Collectors.toSet()));
+		}
 	}
 	
 	@SubscribeEvent
 	public void onRenderEven(RenderLevelStageEvent event) {
 		if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_MIPPED_BLOCKS_BLOCKS) return;
+		if (!render) return;
 		if (RAY_TRIAGONALS.isEmpty()) return; 
 		
 		PoseStack pose = event.getPoseStack();

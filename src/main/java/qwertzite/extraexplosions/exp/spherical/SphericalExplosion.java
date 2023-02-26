@@ -59,7 +59,7 @@ public class SphericalExplosion extends EeExplosionBase {
 		Set<BlockPos> destroyed = Sets.newConcurrentHashSet();
 		
 //		RandomSource rand = this.random;
-		Set<ExplosionRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3))
+		Set<ExplosionRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
 				.parallel()
 				.map(ray -> { 
 					float intencityBase = ThreadLocalRandom.current().nextFloat();
@@ -123,11 +123,12 @@ public class SphericalExplosion extends EeExplosionBase {
 		var offset = Math.sqrt(cx*cx + cy*cy + cz*cz) - dirL;
 		float diminished = this.radius * (0.7f + ray.intencityBase*0.6f) - f;
 		
-		float randMax = (float) Math.pow(ray.intencityBase, 1.0/(4*n));
+		float randMax = EeMath.pow(0.5f, n) * (float) Math.pow(rand.nextFloat(), 1.0/4); // new
 		double[] intencity = { ray.intencityBase,
-				EeMath.pow(rand.nextFloat()*randMax, 4*n),
-				EeMath.pow(rand.nextFloat()*randMax, 4*n),
-				EeMath.pow(rand.nextFloat()*randMax, 4*n) };
+				ray.intencityBase - rand.nextFloat()*randMax,
+				ray.intencityBase - rand.nextFloat()*randMax,
+				ray.intencityBase - rand.nextFloat()*randMax, };
+		
 		EeMath.shuffle(intencity, rand);
 		return IntStream.range(0, 4)
 				.mapToObj(i -> new ExplosionRay(nextTrigonals[i], (float) intencity[i], (float) (this.radius * (0.7 + intencity[i]*0.6) - diminished), offset, n));

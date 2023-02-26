@@ -25,7 +25,10 @@ public class CommandVanillaExplosion {
 		CommandRegister.$("explosion", "vanilla", ctx -> {
 			var position = pos.getValue();
 			try {
-				ctx.getSource().getLevel().explode(ctx.getSource().getEntity(), position.x(), position.y(), position.z(), intencity.getValue(), BlockInteraction.DESTROY);
+				ctx.getSource().getLevel().explode(
+						ctx.getSource().getEntity(),
+						position.x(), position.y(), position.z(),
+						intencity.getValue(), fireArg.getValue(), BlockInteraction.DESTROY);
 				ModLog.info("Caused vanilla explosion at %s with intencity %f", position, intencity.getValue());
 			} catch(Exception e) {
 				ModLog.error("Caught an exception while causing explosion.", e);
