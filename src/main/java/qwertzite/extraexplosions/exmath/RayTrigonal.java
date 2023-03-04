@@ -1,4 +1,4 @@
-package qwertzite.extraexplosions.exp.spherical;
+package qwertzite.extraexplosions.exmath;
 
 import java.util.stream.Stream;
 

@@ -18,7 +18,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import qwertzite.extraexplosions.exp.spherical.RayTrigonal;
+import qwertzite.extraexplosions.exmath.RayTrigonal;
 import qwertzite.extraexplosions.exp.spherical.SphericalExplosion.ExplosionRay;
 
 public class DebugRenderer {

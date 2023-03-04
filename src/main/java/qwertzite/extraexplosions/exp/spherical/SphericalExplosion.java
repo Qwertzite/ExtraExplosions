@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -19,10 +20,14 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.ProtectionEnchantment;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
@@ -33,11 +38,13 @@ import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import qwertzite.extraexplosions.core.debug.DebugRenderer;
 import qwertzite.extraexplosions.core.explosion.EeExplosionBase;
+import qwertzite.extraexplosions.exmath.RayTrigonal;
 import qwertzite.extraexplosions.util.math.EeMath;
 
 public class SphericalExplosion extends EeExplosionBase {
@@ -68,15 +75,20 @@ public class SphericalExplosion extends EeExplosionBase {
 				.collect(Collectors.toSet());
 		while (!trigonals.isEmpty()) {
 			DebugRenderer.addRays(trigonals);
-			var nextTrigonals = trigonals.stream().flatMap(ray -> this.rayTraceStep(ray, destroyed)).collect(Collectors.toSet()); // OPTIMISE: parallel
+			
+			Function<? super ExplosionRay, ? extends Stream<? extends ExplosionRay>> mapper = ray -> this.rayTraceStep(ray, destroyed);
+			var nextTrigonals = trigonals.stream().flatMap(mapper).collect(Collectors.toSet()); // OPTIMISE: parallel
 			// Level#getBlockStateをキャッシュして並列実行可能にする
 			trigonals = nextTrigonals;
 		}
 		
 		this.toBlow.addAll(destroyed);
+		
+		this.attackEntity();
 	}
 	
 	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed) {
+		Stream<ExplosionRay> ret;
 		final float decrease = 0.3F;
 		
 		var from = ray.trigonal().from();
@@ -98,22 +110,25 @@ public class SphericalExplosion extends EeExplosionBase {
 		double cz = dirZ * ray.posOffset();
 		
 		float f = ray.intencity();
+//		System.out.println("a " + Thread.currentThread().getName());
 		for (; f > 0.0F; f -= 0.225F) {
-			BlockPos blockpos = new BlockPos(cx + ox, cy + oy, cz + oz);
-			BlockState blockstate = this.level.getBlockState(blockpos);
-			FluidState fluidstate = this.level.getFluidState(blockpos);
-			if (!this.level.isInWorldBounds(blockpos)) { break; }
-			
 			if (dirL2 < cx*cx + cy*cy + cz*cz) break;
-			
-			Optional<Float> optional = this.damageCalculator.getBlockExplosionResistance(this, this.level, blockpos, blockstate, fluidstate);
-			if (optional.isPresent()) { f -= (optional.get() + decrease) * decrease; }
-			if (f > 0.0F && this.damageCalculator.shouldBlockExplode(this, this.level, blockpos, blockstate, f)) { destroyed.add(blockpos); }
+			BlockPos blockpos = new BlockPos(cx + ox, cy + oy, cz + oz);
+				
+				BlockState blockstate = this.level.getBlockState(blockpos);
+				FluidState fluidstate = this.level.getFluidState(blockpos);
+				if (!this.level.isInWorldBounds(blockpos)) { break; }
+//				synchronized(this) {
+				Optional<Float> optional = this.damageCalculator.getBlockExplosionResistance(this, this.level, blockpos, blockstate, fluidstate);
+				if (optional.isPresent()) { f -= (optional.get() + decrease) * decrease; }
+				if (f > 0.0F && this.damageCalculator.shouldBlockExplode(this, this.level, blockpos, blockstate, f)) { destroyed.add(blockpos); }
+//				}
 			
 			cx += dirX * (double) decrease;
 			cy += dirY * (double) decrease;
 			cz += dirZ * (double) decrease;
 		}
+//		System.out.println("b " + Thread.currentThread().getName());
 		if (f <= 0.0f) return Stream.empty();
 		
 		Random rand = ThreadLocalRandom.current();
@@ -130,8 +145,56 @@ public class SphericalExplosion extends EeExplosionBase {
 				ray.intencityBase - rand.nextFloat()*randMax, };
 		
 		EeMath.shuffle(intencity, rand);
-		return IntStream.range(0, 4)
+		
+		ret = IntStream.range(0, 4)
 				.mapToObj(i -> new ExplosionRay(nextTrigonals[i], (float) intencity[i], (float) (this.radius * (0.7 + intencity[i]*0.6) - diminished), offset, n));
+		return ret;
+//		return Stream.empty();
+	}
+	
+	private void attackEntity() {
+		double attackRange = this.radius * 2.0F;
+		int minX = Mth.floor(this.x - attackRange - 1.0D);
+		int maxX = Mth.floor(this.x + attackRange + 1.0D);
+		int minY = Mth.floor(this.y - attackRange - 1.0D);
+		int maxY = Mth.floor(this.y + attackRange + 1.0D);
+		int minZ = Mth.floor(this.z - attackRange - 1.0D);
+		int maxZ = Mth.floor(this.z + attackRange + 1.0D);
+		List<Entity> list = this.level.getEntities(this.source, new AABB((double) minX, (double) minY, (double) minZ, (double) maxX, (double) maxY, (double) maxZ));
+		net.minecraftforge.event.ForgeEventFactory.onExplosionDetonate(this.level, this, list, attackRange);
+		Vec3 centre = new Vec3(this.x, this.y, this.z);
+		
+		for (var entity : list) {
+			if (entity.ignoreExplosion()) continue;
+
+			double dimlessDist = Math.sqrt(entity.distanceToSqr(centre)) / (double) attackRange; // dimensionless distance
+			if (dimlessDist > 1.0d) continue;
+
+			double dirX = entity.getX() - this.x;
+			double dirY = (entity instanceof PrimedTnt ? entity.getY() : entity.getEyeY()) - this.y;
+			double dirZ = entity.getZ() - this.z;
+			double dist = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+			if (dist == 0.0d) continue;
+			dirX /= dist;
+			dirY /= dist;
+			dirZ /= dist;
+			
+			double exposure = (double) getSeenPercent(centre, entity);
+			double damageBase = (1.0D - dimlessDist) * exposure;
+			entity.hurt(this.getDamageSource(), (float) ((int) ((damageBase * damageBase + damageBase) / 2.0D * 7.0D * (double) attackRange + 1.0D)));
+			double knockback = damageBase;
+			if (entity instanceof LivingEntity) {
+				knockback = ProtectionEnchantment.getExplosionKnockbackAfterDampener((LivingEntity) entity, damageBase);
+			}
+			
+			entity.setDeltaMovement(entity.getDeltaMovement().add(dirX * knockback, dirY * knockback, dirZ * knockback));
+			if (entity instanceof Player) {
+				Player player = (Player) entity;
+				if (!player.isSpectator() && (!player.isCreative() || !player.getAbilities().flying)) {
+					this.hitPlayers.put(player, new Vec3(dirX * damageBase, dirY * damageBase, dirZ * damageBase));
+				}
+			}
+		}
 	}
 
 	@Override
