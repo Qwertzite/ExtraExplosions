@@ -8,6 +8,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Explosion.BlockInteraction;
 import net.minecraft.world.level.Level;
+import qwertzite.extraexplosions.core.ModLog;
 import qwertzite.extraexplosions.core.network.ModNetwork;
 import qwertzite.extraexplosions.exp.barostrain.BaroStrainExplosion;
 import qwertzite.extraexplosions.exp.barostrain.PacketBaroStrainExplosion;
@@ -86,8 +87,10 @@ public class ExtraExplosions {
 		boolean remote = world.isClientSide();
 		var explosion = new SphericalExplosion(world, entity, x, y, z, strength, fire, interaction);
 		if (net.minecraftforge.event.ForgeEventFactory.onExplosionStart(world, explosion)) return explosion;
+		Long timeMillis = System.currentTimeMillis();
 		explosion.explode();
 		explosion.finalizeExplosion(remote);
+		ModLog.info("Caused spherical explosion, took %d ms.", System.currentTimeMillis() - timeMillis);
 		
 		if (!remote) {
 			ServerLevel level = (ServerLevel) world;

@@ -5,7 +5,6 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -76,10 +75,23 @@ public class SphericalExplosion extends EeExplosionBase {
 		while (!trigonals.isEmpty()) {
 			DebugRenderer.addRays(trigonals);
 			
-			Function<? super ExplosionRay, ? extends Stream<? extends ExplosionRay>> mapper = ray -> this.rayTraceStep(ray, destroyed);
-			var nextTrigonals = trigonals.stream().flatMap(mapper).collect(Collectors.toSet()); // OPTIMISE: parallel
 			// Level#getBlockStateをキャッシュして並列実行可能にする
-			trigonals = nextTrigonals;
+//			try {
+//				var tmp = trigonals;
+//				Executors.
+//				nextTrigonals = Executors.newSingleThreadExecutor().submit(
+//						() -> tmp.stream().flatMap(mapper).collect(Collectors.toSet())).get();
+//			} catch (InterruptedException | ExecutionException e) {
+//				e.printStackTrace();
+//			} // OPTIMISE: parallel
+			
+			// parallel stream を asynchronous 実行開始 (Future)
+			// taskを適宜実行開始
+			// Futureのタスクで，終了時に mainThread用タスクを終了するようにする
+			
+			var blockPropertyCache = new BlockPropertyCache(this.level);
+			var currentTrigonals = trigonals;
+			trigonals = currentTrigonals.stream().flatMap(ray -> this.rayTraceStep(ray, destroyed, blockPropertyCache)).collect(Collectors.toSet());
 		}
 		
 		this.toBlow.addAll(destroyed);
@@ -87,7 +99,7 @@ public class SphericalExplosion extends EeExplosionBase {
 		this.attackEntity();
 	}
 	
-	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed) {
+	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, BlockPropertyCache blockProperty) {
 		Stream<ExplosionRay> ret;
 		final float decrease = 0.3F;
 		
@@ -114,14 +126,19 @@ public class SphericalExplosion extends EeExplosionBase {
 		for (; f > 0.0F; f -= 0.225F) {
 			if (dirL2 < cx*cx + cy*cy + cz*cz) break;
 			BlockPos blockpos = new BlockPos(cx + ox, cy + oy, cz + oz);
-				
-				BlockState blockstate = this.level.getBlockState(blockpos);
-				FluidState fluidstate = this.level.getFluidState(blockpos);
-				if (!this.level.isInWorldBounds(blockpos)) { break; }
+			
+//			var property = blockProperty.getBlockProperty(blockpos);
+//			if (!property.isInWorldBounds()) { break; }
+//			BlockState blockstate = property.getBlockState();
+//			FluidState fluidstate = property.getFluidState();
+			if (!this.level.isInWorldBounds(blockpos)) { break; }
+			BlockState blockstate = this.level.getBlockState(blockpos);
+			FluidState fluidstate = this.level.getFluidState(blockpos);
+			
 //				synchronized(this) {
-				Optional<Float> optional = this.damageCalculator.getBlockExplosionResistance(this, this.level, blockpos, blockstate, fluidstate);
-				if (optional.isPresent()) { f -= (optional.get() + decrease) * decrease; }
-				if (f > 0.0F && this.damageCalculator.shouldBlockExplode(this, this.level, blockpos, blockstate, f)) { destroyed.add(blockpos); }
+			Optional<Float> optional = this.damageCalculator.getBlockExplosionResistance(this, this.level, blockpos, blockstate, fluidstate);
+			if (optional.isPresent()) { f -= (optional.get() + decrease) * decrease; }
+			if (f > 0.0F && this.damageCalculator.shouldBlockExplode(this, this.level, blockpos, blockstate, f)) { destroyed.add(blockpos); }
 //				}
 			
 			cx += dirX * (double) decrease;
