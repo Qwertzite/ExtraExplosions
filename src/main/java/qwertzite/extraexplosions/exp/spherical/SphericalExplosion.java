@@ -70,7 +70,7 @@ public class SphericalExplosion extends EeExplosionBase {
 				.parallel()
 				.map(ray -> { 
 					float intencityBase = ThreadLocalRandom.current().nextFloat();
-					return new ExplosionRay(ray, intencityBase, this.radius * (0.7F + intencityBase * 0.6F), 0.0d, 0);
+					return new ExplosionRay(ray, intencityBase, this.destructionIntencity(intencityBase), 0.0d, 0);
 				})
 				.collect(Collectors.toSet());
 		while (!trigonals.isEmpty()) {
@@ -136,7 +136,7 @@ public class SphericalExplosion extends EeExplosionBase {
 		
 		RayTrigonal[] nextTrigonals = ray.trigonal().divide();
 		var offset = Math.sqrt(cx*cx + cy*cy + cz*cz) - dirL;
-		float diminished = this.radius * (0.7f + ray.intencityBase*0.6f) - f;
+		float diminished = this.destructionIntencity(ray.intencityBase) - f;
 		
 		float randMax = EeMath.pow(0.5f, n) * (float) Math.pow(rand.nextFloat(), 1.0/4); // new
 		double[] intencity = { ray.intencityBase,
@@ -147,9 +147,16 @@ public class SphericalExplosion extends EeExplosionBase {
 		EeMath.shuffle(intencity, rand);
 		
 		ret = IntStream.range(0, 4)
-				.mapToObj(i -> new ExplosionRay(nextTrigonals[i], (float) intencity[i], (float) (this.radius * (0.7 + intencity[i]*0.6) - diminished), offset, n));
+				.mapToObj(i -> new ExplosionRay(nextTrigonals[i], (float) intencity[i], this.destructionIntencity(intencity[i]) - diminished, offset, n));
 		return ret;
 //		return Stream.empty();
+	}
+	
+	private float destructionIntencity(double intencity) {
+		double a = 8.0d;
+		double b = a*a / 4.0d;
+		double c = -a/2.0d; // -sqrt(b)
+		return (float) (this.radius *1.0d + 0.6d * (Math.sqrt(this.radius*a + b) + c) * (intencity-0.5d));
 	}
 	
 	private void attackEntity() {
