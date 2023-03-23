@@ -42,6 +42,10 @@ public class ModLog {
 		ModLog.log(Level.ERROR, message, throwable);
 	}
 	
+	public static void warn(String message, Throwable throwable) {
+		ModLog.log(Level.WARN, message, throwable);
+	}
+	
 	public static void warn(String message, Object...params) {
 		ModLog.log(Level.WARN, message, params);
 	}

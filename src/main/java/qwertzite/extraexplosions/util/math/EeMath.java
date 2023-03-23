@@ -8,6 +8,7 @@ public class EeMath {
 	public static final float PI = (float) Math.PI;
 	public static final float RAD2DEG = (float) (180.0d / Math.PI);
 	public static final float DEG2RAD = (float) (Math.PI / 180.0f);
+	public static final double SQRT_2 = Math.sqrt(2.0d);
 	
 	public static Vec3 sum(Vec3 v1, Vec3 v2, Vec3 v3) {
 		return new Vec3(

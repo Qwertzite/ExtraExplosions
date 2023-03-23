@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -41,6 +43,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import qwertzite.extraexplosions.core.ModLog;
 import qwertzite.extraexplosions.core.debug.DebugRenderer;
 import qwertzite.extraexplosions.core.explosion.EeExplosionBase;
 import qwertzite.extraexplosions.exmath.RayTrigonal;
@@ -59,9 +62,10 @@ public class SphericalExplosion extends EeExplosionBase {
 	
 	@Override
 	public void explode() {
+		
 		this.level.gameEvent(this.source, GameEvent.EXPLODE, new Vec3(this.x, this.y, this.z));
 		
-		DebugRenderer.clearRays();
+		DebugRenderer.clear();
 		Set<BlockPos> destroyed = Sets.newConcurrentHashSet();
 		
 //		RandomSource rand = this.random;
@@ -72,34 +76,47 @@ public class SphericalExplosion extends EeExplosionBase {
 					return new ExplosionRay(ray, intencityBase, this.destructionIntencity(intencityBase), 0.0d, 0);
 				})
 				.collect(Collectors.toSet());
-		while (!trigonals.isEmpty()) {
-			DebugRenderer.addRays(trigonals);
-			
-			// Level#getBlockStateをキャッシュして並列実行可能にする
-//			try {
-//				var tmp = trigonals;
-//				Executors.
-//				nextTrigonals = Executors.newSingleThreadExecutor().submit(
-//						() -> tmp.stream().flatMap(mapper).collect(Collectors.toSet())).get();
-//			} catch (InterruptedException | ExecutionException e) {
-//				e.printStackTrace();
-//			} // OPTIMISE: parallel
-			
-			// parallel stream を asynchronous 実行開始 (Future)
-			// taskを適宜実行開始
-			// Futureのタスクで，終了時に mainThread用タスクを終了するようにする
-			
-			var blockPropertyCache = new BlockPropertyCache(this.level);
-			var currentTrigonals = trigonals;
-			trigonals = currentTrigonals.stream().flatMap(ray -> this.rayTraceStep(ray, destroyed, blockPropertyCache)).collect(Collectors.toSet());
-		}
 		
+		var blockPropertyCache = new BlockPropertyCache(this.level);
+		var future = Executors
+				.newSingleThreadExecutor(
+//						new BasicThreadFactory.Builder()
+//						.priority(Math.max(Thread.MIN_PRIORITY, Thread.currentThread().getPriority() - 1))
+//						.build()
+						)
+				.submit(
+						() -> {
+							var tmp = trigonals;
+							while (!tmp.isEmpty()) {
+								DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+								tmp = tmp.parallelStream().flatMap(
+										ray -> {
+											try {
+												var res = this.rayTraceStep(ray, destroyed, blockPropertyCache);
+												return res;
+											} catch (Exception e) {
+												e.printStackTrace();
+												ModLog.warn("Caught an unexpected exception while ray trace step. Please contact distributor of this mod.", e);
+												return Stream.empty();
+											}
+										}).collect(Collectors.toSet());
+							}
+							blockPropertyCache.endJobExecution();
+						});
+		blockPropertyCache.awaitJob();
+		
+		try {
+			future.get();
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
 		this.toBlow.addAll(destroyed);
 		
 		this.attackEntity();
 	}
 	
 	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, BlockPropertyCache blockProperty) {
+		
 		Stream<ExplosionRay> ret;
 		final float decrease = 0.3F;
 		
@@ -122,30 +139,26 @@ public class SphericalExplosion extends EeExplosionBase {
 		double cz = dirZ * ray.posOffset();
 		
 		float f = ray.intencity();
-//		System.out.println("a " + Thread.currentThread().getName());
 		for (; f > 0.0F; f -= 0.225F) {
 			if (dirL2 < cx*cx + cy*cy + cz*cz) break;
 			BlockPos blockpos = new BlockPos(cx + ox, cy + oy, cz + oz);
 			
-//			var property = blockProperty.getBlockProperty(blockpos);
-//			if (!property.isInWorldBounds()) { break; }
-//			BlockState blockstate = property.getBlockState();
-//			FluidState fluidstate = property.getFluidState();
-			if (!this.level.isInWorldBounds(blockpos)) { break; }
-			BlockState blockstate = this.level.getBlockState(blockpos);
-			FluidState fluidstate = this.level.getFluidState(blockpos);
+			var property = blockProperty.getBlockProperty(blockpos);
+			if (!property.isInWorldBounds()) { 
+				f = 0.0f;
+				break;
+			}
+			BlockState blockstate = property.getBlockState();
+			FluidState fluidstate = property.getFluidState();
 			
-//				synchronized(this) {
 			Optional<Float> optional = this.damageCalculator.getBlockExplosionResistance(this, this.level, blockpos, blockstate, fluidstate);
 			if (optional.isPresent()) { f -= (optional.get() + decrease) * decrease; }
 			if (f > 0.0F && this.damageCalculator.shouldBlockExplode(this, this.level, blockpos, blockstate, f)) { destroyed.add(blockpos); }
-//				}
 			
 			cx += dirX * (double) decrease;
 			cy += dirY * (double) decrease;
 			cz += dirZ * (double) decrease;
 		}
-//		System.out.println("b " + Thread.currentThread().getName());
 		if (f <= 0.0f) return Stream.empty();
 		
 		Random rand = ThreadLocalRandom.current();
@@ -166,7 +179,6 @@ public class SphericalExplosion extends EeExplosionBase {
 		ret = IntStream.range(0, 4)
 				.mapToObj(i -> new ExplosionRay(nextTrigonals[i], (float) intencity[i], this.destructionIntencity(intencity[i]) - diminished, offset, n));
 		return ret;
-//		return Stream.empty();
 	}
 	
 	private float destructionIntencity(double intencity) {
