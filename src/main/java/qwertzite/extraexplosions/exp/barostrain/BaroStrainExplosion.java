@@ -3,16 +3,32 @@ package qwertzite.extraexplosions.exp.barostrain;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.mojang.datafixers.util.Pair;
+
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Direction.Axis;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.storage.loot.LootContext;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -34,8 +50,9 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	
 	@Override
 	public void explode() {
+		
 		DebugRenderer.clear();
-		double division = 1.0d * 26d; // TODO: バニラと同じくらいになるように調整する
+		double division = 1.0d * 1d; // TODO: バニラと同じくらいになるように調整する
 		
 		this.level.gameEvent(this.source, GameEvent.EXPLODE, new Vec3(this.x, this.y, this.z));
 		
@@ -47,20 +64,76 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				})
 				.collect(Collectors.toSet());
 		
-		var fem = new FEM();
-		var cachedLevelAccessWrapper = new CachedLevelAccessWrapper(this.level, this);
+//		var levelCache = new BarostrainLevelCache(this.level, this);
+//		LevelCache.execute(levelCache, () -> {
+//			System.out.println("explode 1.3 aa"); // DEBUG
+//			FEM fem = new FEM(levelCache);
+//			
+//			var executor = Executors.newSingleThreadScheduledExecutor();
+//			while (!trigonals.isEmpty()) {
+//				DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+//				// ray trace.
+//				var tmp = trigonals;
+//				var future = executor.submit(() -> {
+//					var ret = tmp.stream()
+//							.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
+//							.collect(Collectors.toSet());
+//					return ret;
+//				});
+////				trigonals = trigonals.stream()
+////						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+////						.collect(Collectors.toSet());
+//				
+//				// FEM analysis
+//				fem.compute();
+//			}
+//			
+//			DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+//			
+//			this.toBlow.addAll(levelCache.getDestroyeds());
+//		});
+		
+		var cachedLevelAccessWrapper = new CachedLevelAccessWrapper(Thread.currentThread(), this.level, this);
+		
+		System.out.println("explode 1.3 aa"); // DEBUG
+		FEM fem = new FEM(cachedLevelAccessWrapper);
+		
+		var executor = Executors.newSingleThreadScheduledExecutor();
 		while (!trigonals.isEmpty()) {
 			DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-			trigonals = trigonals.stream()
-					.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
-					.collect(Collectors.toSet());
+//			var feem = fem; // DEBUG
+			// ray trace.
+			var tmp = trigonals;
+			var future = executor.submit(() -> {
+				var ret = tmp.stream()
+						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+						.collect(Collectors.toSet());
+				cachedLevelAccessWrapper.endJobExecution();
+				return ret;
+			});
+//			trigonals = trigonals.stream()
+//					.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+//					.collect(Collectors.toSet());
+			cachedLevelAccessWrapper.awaitJob();
+			try {
+				trigonals = future.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
+			
+			// FEM analysis
 			fem.compute();
 		}
-		DebugRenderer.addVertexDisplacement(fem.getForceMap());
+		
+		DebugRenderer.addVertexDisplacement(cachedLevelAccessWrapper.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+		
+		this.toBlow.addAll(cachedLevelAccessWrapper.getDestroyeds());
+		
 		// TODO
 		System.out.println("boom! A");
 	}
 	
+//	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess) {
 	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, CachedLevelAccessWrapper levelAccess) {
 		var from = ray.trigonal().from();
 		var to = ray.trigonal().to();
@@ -93,6 +166,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		return Arrays.stream(nextTrigonals).map(t -> new PressureRay(t, ray.intencity(), nextDivision, travelled, nextDivStep, false));
 	}
 	
+//	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
 	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
@@ -189,6 +263,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	 * @param levelAccess
 	 * @return
 	 */
+//	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
 	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
@@ -324,7 +399,67 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	@Override
 	public void finalizeExplosion(boolean pSpawnParticles) {
 		// TODO Auto-generated method stub
+		// delete following program.
+		
+		if (this.blockInteraction != Explosion.BlockInteraction.NONE) {
+			ObjectArrayList<Pair<ItemStack, BlockPos>> objectarraylist = new ObjectArrayList<>();
+			boolean explodedByPlayer = this.getSourceMob() instanceof Player;
+			Util.shuffle(this.toBlow, this.level.random);
+			System.out.println("Destroy blocks! " + this.toBlow.size());
+			for (BlockPos blockpos : this.toBlow) {
+				BlockState blockstate = this.level.getBlockState(blockpos);
+//				Block block = blockstate.getBlock();
+				if (!blockstate.isAir()) {
+					BlockPos immutablePos = blockpos.immutable();
+					this.level.getProfiler().push("ee.spherical.explosion_blocks");
+					if (blockstate.canDropFromExplosion(this.level, blockpos, this)) {
+						Level level = this.level;
+						if (level instanceof ServerLevel serverlevel) {
+							
+							BlockEntity blockentity = blockstate.hasBlockEntity() ? this.level.getBlockEntity(blockpos) : null;
+							LootContext.Builder lootcontext$builder = (new LootContext.Builder(serverlevel)).withRandom(this.level.random)
+									.withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(blockpos)).withParameter(LootContextParams.TOOL, ItemStack.EMPTY)
+									.withOptionalParameter(LootContextParams.BLOCK_ENTITY, blockentity)
+									.withOptionalParameter(LootContextParams.THIS_ENTITY, this.source);
+							if (this.blockInteraction == Explosion.BlockInteraction.DESTROY) {
+								lootcontext$builder.withParameter(LootContextParams.EXPLOSION_RADIUS, this.radius);
+							}
+
+							blockstate.spawnAfterBreak(serverlevel, blockpos, ItemStack.EMPTY, explodedByPlayer);
+							blockstate.getDrops(lootcontext$builder).forEach((stack) -> {
+								addBlockDrops(objectarraylist, stack, immutablePos);
+							});
+						}
+					}
+
+					blockstate.onBlockExploded(this.level, blockpos, this);
+					this.level.getProfiler().pop();
+				}
+			}
+
+			for (Pair<ItemStack, BlockPos> pair : objectarraylist) {
+				Block.popResource(this.level, pair.getSecond(), pair.getFirst());
+			}
+		}
+		
 		System.out.println("boom! B");
 	}
 
+	
+	private static void addBlockDrops(ObjectArrayList<Pair<ItemStack, BlockPos>> pDropPositionArray, ItemStack pStack, BlockPos pPos) {
+		int i = pDropPositionArray.size();
+		for (int j = 0; j < i; ++j) {
+			Pair<ItemStack, BlockPos> pair = pDropPositionArray.get(j);
+			ItemStack itemstack = pair.getFirst();
+			if (ItemEntity.areMergable(itemstack, pStack)) {
+				ItemStack itemstack1 = ItemEntity.merge(itemstack, pStack, 16);
+				pDropPositionArray.set(j, Pair.of(itemstack1, pair.getSecond()));
+				if (pStack.isEmpty()) {
+					return;
+				}
+			}
+		}
+		pDropPositionArray.add(Pair.of(pStack, pPos));
+	}
+	
 }

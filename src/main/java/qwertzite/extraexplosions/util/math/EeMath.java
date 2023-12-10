@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.util.math;
 
 import java.util.Random;
 
+import net.minecraft.core.Vec3i;
 import net.minecraft.world.phys.Vec3;
 
 public class EeMath {
@@ -96,5 +97,49 @@ public class EeMath {
 			array[index] = array[i];
 			array[i] = tmp;
 		}
+	}
+	
+	public static int getXi(Vec3i vec, int i) {
+		return switch(i) {
+		case 0 -> vec.getX();
+		case 1 -> vec.getY();
+		case 2 -> vec.getZ();
+		default -> throw new IllegalArgumentException("Unexpected value: " + i);
+		};
+	}
+	
+	public static double getXi(Vec3 vec, int i) {
+		return switch(i) {
+		case 0 -> vec.x();
+		case 1 -> vec.y();
+		case 2 -> vec.z();
+		default -> throw new IllegalArgumentException("Unexpected value: " + i);
+		};
+	}
+	
+	public static double[][] inverseMatrix(double[][] mat) {
+		double det= 
+				mat[0][0] * mat[1][1] * mat[2][2] +
+				mat[0][1] * mat[1][2] * mat[2][0] +
+				mat[0][2] * mat[2][1] * mat[1][0] -
+				mat[2][0] * mat[1][1] * mat[0][2] -
+				mat[0][0] * mat[1][2] * mat[2][1] -
+				mat[1][0] * mat[0][1] * mat[2][2];
+		assert(det != 0.0d); // assert that the matrix is regular.
+		var inv = new double[3][3];
+		
+		inv[0][0] = (mat[1][1] * mat[2][2] - mat[1][2]*mat[2][1]) / det;
+		inv[0][1] = (mat[1][0] * mat[2][2] - mat[1][2]*mat[2][0]) / det;
+		inv[0][2] = (mat[1][0] * mat[2][1] - mat[1][1]*mat[2][0]) / det;
+		
+		inv[1][0] = (mat[0][1] * mat[2][2] - mat[0][2]*mat[2][1]) / det;
+		inv[1][1] = (mat[0][0] * mat[2][2] - mat[0][2]*mat[2][0]) / det;
+		inv[1][2] = (mat[0][0] * mat[2][1] - mat[0][1]*mat[2][0]) / det;
+		
+		inv[2][0] = (mat[0][1] * mat[1][2] - mat[0][2]*mat[1][1]) / det;
+		inv[2][1] = (mat[0][0] * mat[1][2] - mat[0][2]*mat[1][0]) / det;
+		inv[2][2] = (mat[0][0] * mat[1][1] - mat[0][1]*mat[1][0]) / det;
+		
+		return inv;
 	}
 }

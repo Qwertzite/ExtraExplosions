@@ -77,45 +77,65 @@ public class SphericalExplosion extends EeExplosionBase {
 				})
 				.collect(Collectors.toSet());
 		
-		var blockPropertyCache = new BlockPropertyCache(this.level);
-		var future = Executors
-				.newSingleThreadExecutor(
-//						new BasicThreadFactory.Builder()
-//						.priority(Math.max(Thread.MIN_PRIORITY, Thread.currentThread().getPriority() - 1))
-//						.build()
-						)
-				.submit(
-						() -> {
-							var tmp = trigonals;
-							while (!tmp.isEmpty()) {
-								DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-								tmp = tmp.parallelStream().flatMap(
-										ray -> {
-											try {
-												var res = this.rayTraceStep(ray, destroyed, blockPropertyCache);
-												return res;
-											} catch (Exception e) {
-												e.printStackTrace();
-												ModLog.warn("Caught an unexpected exception while ray trace step. Please contact distributor of this mod.", e);
-												return Stream.empty();
-											}
-										}).collect(Collectors.toSet());
+		var levelCache = new SphericalLevelCache(this.level);
+		SphericalLevelCache.execute(levelCache, () -> {
+			var tmp = trigonals;
+			while (!tmp.isEmpty()) {
+				DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+				tmp = tmp.parallelStream().<ExplosionRay>flatMap(
+						ray -> {
+							try {
+								Stream<ExplosionRay> res = this.rayTraceStep(ray, destroyed, levelCache);
+								return res;
+							} catch (Exception e) {
+								e.printStackTrace();
+								ModLog.warn("Caught an unexpected exception while ray trace step. Please contact distributor of this mod.", e);
+								return Stream.empty();
 							}
-							blockPropertyCache.endJobExecution();
-						});
-		blockPropertyCache.awaitJob();
+						}).collect(Collectors.toSet());
+			}
+		});
 		
-		try {
-			future.get();
-		} catch (InterruptedException | ExecutionException e) {
-			e.printStackTrace();
-		}
+//		var blockPropertyCache = new BlockPropertyCache(this.level);
+//		var future = Executors
+//				.newSingleThreadExecutor(
+////						new BasicThreadFactory.Builder()
+////						.priority(Math.max(Thread.MIN_PRIORITY, Thread.currentThread().getPriority() - 1))
+////						.build()
+//						)
+//				.submit(
+//						() -> {
+//							var tmp = trigonals;
+//							while (!tmp.isEmpty()) {
+//								DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+//								tmp = tmp.parallelStream().flatMap(
+//										ray -> {
+//											try {
+//												var res = this.rayTraceStep(ray, destroyed, blockPropertyCache);
+//												return res;
+//											} catch (Exception e) {
+//												e.printStackTrace();
+//												ModLog.warn("Caught an unexpected exception while ray trace step. Please contact distributor of this mod.", e);
+//												return Stream.empty();
+//											}
+//										}).collect(Collectors.toSet());
+//							}
+//							blockPropertyCache.endJobExecution();
+//						});
+//		blockPropertyCache.awaitJob();
+//		try {
+//			future.get();
+//		} catch (InterruptedException | ExecutionException e) {
+//			e.printStackTrace();
+//		}
+		
 		this.toBlow.addAll(destroyed);
 		
 		this.attackEntity();
 	}
 	
-	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, BlockPropertyCache blockProperty) {
+	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, SphericalLevelCache blockProperty) {
+//	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, BlockPropertyCache blockProperty) {
 		
 		Stream<ExplosionRay> ret;
 		final float decrease = 0.3F;

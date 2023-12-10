@@ -26,7 +26,7 @@ public class CommandBaroStrainExplosion {
 				ExtraExplosions.baroStrainExplosion(ctx.getSource().getLevel(), ctx.getSource().getEntity(),
 						position.x(), position.y(), position.z(),
 						intencity.getValue(), BlockInteraction.DESTROY);
-				ModLog.info("Caused baro-strain explosion at %s with intencity %f", position, intencity.getValue());
+				ModLog.info("Caused baro-strain explosion at %s with intencity of %f", position, intencity.getValue());
 			} catch(Exception e) {
 				ModLog.error("Caught an exception while causing explosion.", e);
 			}

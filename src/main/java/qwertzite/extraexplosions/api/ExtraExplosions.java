@@ -106,7 +106,7 @@ public class ExtraExplosions {
 	public static Explosion baroStrainExplosion(Level world, @Nullable Entity entity, double x, double y, double z, float strength, BlockInteraction interaction) {
 		boolean remote = world.isClientSide();
 		var explosion = new BaroStrainExplosion(world, entity, x, y, z, strength, interaction);
-		if (net.minecraftforge.event.ForgeEventFactory.onExplosionStart(world, explosion)) return explosion;
+		if (net.minecraftforge.event.ForgeEventFactory.onExplosionStart(world, explosion)) { return explosion; }
 		explosion.explode();
 		explosion.finalizeExplosion(remote);
 		
