@@ -3,8 +3,6 @@ package qwertzite.extraexplosions.exp.barostrain;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -57,97 +55,29 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		
 		this.level.gameEvent(this.source, GameEvent.EXPLODE, new Vec3(this.x, this.y, this.z));
 		
-		Set<PressureRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
-				.parallel()
-				.map(ray -> { 
-//					float intencityBase = ThreadLocalRandom.current().nextFloat();
-					return new PressureRay(ray, this.radius, division);
-				})
-				.collect(Collectors.toSet());
-		
-//		var levelCache = new BarostrainLevelCache(this.level, this);
-//		LevelCache.execute(levelCache, () -> {
-//			System.out.println("explode 1.3 aa"); // DEBUG
-//			FEM fem = new FEM(levelCache);
-//			
-//			var executor = Executors.newSingleThreadScheduledExecutor();
-//			while (!trigonals.isEmpty()) {
-//				DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-//				// ray trace.
-//				var tmp = trigonals;
-//				var future = executor.submit(() -> {
-//					var ret = tmp.stream()
-//							.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
-//							.collect(Collectors.toSet());
-//					return ret;
-//				});
-////				trigonals = trigonals.stream()
-////						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
-////						.collect(Collectors.toSet());
-//				
-//				// FEM analysis
-//				fem.compute();
-//			}
-//			
-//			DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
-//			
-//			this.toBlow.addAll(levelCache.getDestroyeds());
-//		});
-		
 		var levelCache = new BarostrainLevelCache(level, this);
+		
 		FEM fem = new FEM(levelCache);
-		while (!trigonals.isEmpty()) {
-			DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-			var tmp = trigonals;
-			trigonals = LevelCache.execute(levelCache, () -> {
-				var ret = tmp.stream()
+		LevelCache.execute(levelCache, () -> {
+			Set<PressureRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
+					.parallel()
+					.map(ray -> { 
+						return new PressureRay(ray, this.radius, division);
+					})
+					.collect(Collectors.toSet());
+			
+			while (!trigonals.isEmpty()) {
+				DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+				trigonals = trigonals.stream()
 						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
 						.collect(Collectors.toSet());
-				return ret;
-			});
-			fem.compute();
-		}
+				fem.compute();
+			}
+		});
 		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+		
 		this.toBlow.addAll(levelCache.getDestroyeds());
 		
-		
-//		var cachedLevelAccessWrapper = new CachedLevelAccessWrapper(Thread.currentThread(), this.level, this);
-//		
-//		System.out.println("explode 1.3 aa"); // DEBUG
-//		FEM fem = new FEM(cachedLevelAccessWrapper);
-//		
-//		var executor = Executors.newSingleThreadScheduledExecutor();
-//		while (!trigonals.isEmpty()) {
-//			DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-////			var feem = fem; // DEBUG
-//			// ray trace.
-//			var tmp = trigonals;
-//			var future = executor.submit(() -> {
-//				var ret = tmp.stream()
-//						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
-//						.collect(Collectors.toSet());
-//				cachedLevelAccessWrapper.endJobExecution();
-//				return ret;
-//			});
-////			trigonals = trigonals.stream()
-////					.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
-////					.collect(Collectors.toSet());
-//			cachedLevelAccessWrapper.awaitJob();
-//			try {
-//				trigonals = future.get();
-//			} catch (InterruptedException | ExecutionException e) {
-//				e.printStackTrace();
-//			}
-//			
-//			// FEM analysis
-//			fem.compute();
-//		}
-//		
-//		DebugRenderer.addVertexDisplacement(cachedLevelAccessWrapper.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
-//		
-//		this.toBlow.addAll(cachedLevelAccessWrapper.getDestroyeds());
-		
-		// TODO
 		System.out.println("boom! A");
 	}
 	
