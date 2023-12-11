@@ -9,14 +9,14 @@ import qwertzite.extraexplosions.util.math.EeMath;
 
 public class FEM {
 	
-	private CachedLevelAccessWrapper level;
-//	private BarostrainLevelCache level;
+//	private CachedLevelAccessWrapper level;
+	private BarostrainLevelCache level;
 	
 	private NodeSet nodeSet = new NodeSet();
 	private ElementSet elementSet = new ElementSet();
 	
-//	public FEM(BarostrainLevelCache level) {
-	public FEM(CachedLevelAccessWrapper level) {
+	public FEM(BarostrainLevelCache level) {
+//	public FEM(CachedLevelAccessWrapper level) {
 		this.level = level;
 	}
 	
@@ -79,8 +79,7 @@ public class FEM {
 		
 		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
-		while (count > 0 && iter < 1024)
-		{
+		while (count > 0 && iter < 1024) {
 			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
 				tmpDestroyed.add(e.getPosition());
@@ -145,7 +144,7 @@ public class FEM {
 		boolean allZero = true;
 		for (BlockPos adj : node.getAdjacentElements()) {
 //			var prop = this.level.getBlockProperty(adj);
-			var prop = this.level.getBlockPropertyAt(adj);
+			var prop = this.level.getBlockProperty(adj);
 			var limit = prop.getHardness() / 16;
 			if (norm > limit*limit && norm > 0.05*0.05 && limit*limit > 0) return true;
 		}
@@ -166,7 +165,7 @@ public class FEM {
 	private void computeElement(FemElement elem) {
 		var elementPosition = elem.getPosition();
 //		var elasticProperty = this.level.getBlockProperty(elementPosition);
-		var elasticProperty = this.level.getBlockPropertyAt(elementPosition);
+		var elasticProperty = this.level.getBlockProperty(elementPosition);
 		var mu = elasticProperty.getMuForElement();
 		var lambda = elasticProperty.getLambdaForElement();
 		
@@ -219,7 +218,7 @@ public class FEM {
 			
 			var elementPosition = nodePosition.offset(elementOffset.getOffset());
 			var element = this.elementSet.getElementAt(elementPosition);
-			var elasticProperty = this.level.getBlockPropertyAt(elementPosition);
+			var elasticProperty = this.level.getBlockProperty(elementPosition);
 //			var elasticProperty = this.level.getBlockProperty(elementPosition);
 			var mass = elasticProperty.getMass();
 			
@@ -254,7 +253,7 @@ public class FEM {
 		
 		for (var offset : elemOffset) {
 			var elem = pos0.offset(offset);
-			var property = this.level.getBlockPropertyAt(elem);
+			var property = this.level.getBlockProperty(elem);
 			double mu = property.getMuForElement();
 			double muLambda = property.getLambdaForElement() / 3.0d + mu;
 			double mass = property.getMass();
@@ -282,7 +281,7 @@ public class FEM {
 		
 		for (var offset : elemOffset) {
 			var elem = pos0.offset(offset);
-			var property = this.level.getBlockPropertyAt(elem);
+			var property = this.level.getBlockProperty(elem);
 			double mu = property.getMuForElement();
 			double muLambda = property.getLambdaForElement() / 3.0d + mu;
 			double mass = property.getMass();

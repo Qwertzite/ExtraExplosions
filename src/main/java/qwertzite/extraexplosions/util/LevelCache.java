@@ -1,6 +1,7 @@
 package qwertzite.extraexplosions.util;
 
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -17,21 +18,32 @@ public abstract class LevelCache<T extends LevelCache.BlockProperty> {
 	private static final ForkJoinPool THREAD_POOL = new ForkJoinPool(Runtime.getRuntime().availableProcessors() * 2);
 	
 	public static void execute(LevelCache<?> cache, Runnable job) {
-		Future<?> task = THREAD_POOL.submit(() -> {
+		LevelCache.execute(cache, () -> {
+			job.run();
+			return null;
+		});
+	}
+	
+	public static <V> V execute(LevelCache<?> cache, Callable<V> job) {
+
+		Future<V> task = THREAD_POOL.submit(() -> {
+			V result = null;
 			try {
-				job.run();
+				result = job.call();
 			} catch (Exception e) {
 				ModLog.error("Caught an exception while parallel level access.", e);
 			} finally {
 				cache.endJobExecution();
 			}
+			return result;
 		});
 		cache.awaitJob();
 		
 		try {
-			task.get();
+			return task.get();
 		} catch (InterruptedException | ExecutionException e) {
 			e.printStackTrace();
+			return null;
 		}
 	}
 	
@@ -89,7 +101,7 @@ public abstract class LevelCache<T extends LevelCache.BlockProperty> {
 			synchronized (this) {
 				if (!this.queue.isEmpty()) continue;
 				try {
-					this.wait(1);
+					this.wait(100);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}

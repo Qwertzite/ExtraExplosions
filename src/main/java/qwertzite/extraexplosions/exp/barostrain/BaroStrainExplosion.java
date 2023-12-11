@@ -36,6 +36,7 @@ import qwertzite.extraexplosions.core.ModLog;
 import qwertzite.extraexplosions.core.debug.DebugRenderer;
 import qwertzite.extraexplosions.core.explosion.EeExplosionBase;
 import qwertzite.extraexplosions.exmath.RayTrigonal;
+import qwertzite.extraexplosions.util.LevelCache;
 
 public class BaroStrainExplosion extends EeExplosionBase {
 
@@ -93,48 +94,65 @@ public class BaroStrainExplosion extends EeExplosionBase {
 //			this.toBlow.addAll(levelCache.getDestroyeds());
 //		});
 		
-		var cachedLevelAccessWrapper = new CachedLevelAccessWrapper(Thread.currentThread(), this.level, this);
-		
-		System.out.println("explode 1.3 aa"); // DEBUG
-		FEM fem = new FEM(cachedLevelAccessWrapper);
-		
-		var executor = Executors.newSingleThreadScheduledExecutor();
+		var levelCache = new BarostrainLevelCache(level, this);
+		FEM fem = new FEM(levelCache);
 		while (!trigonals.isEmpty()) {
 			DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-//			var feem = fem; // DEBUG
-			// ray trace.
 			var tmp = trigonals;
-			var future = executor.submit(() -> {
+			trigonals = LevelCache.execute(levelCache, () -> {
 				var ret = tmp.stream()
-						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
 						.collect(Collectors.toSet());
-				cachedLevelAccessWrapper.endJobExecution();
 				return ret;
 			});
-//			trigonals = trigonals.stream()
-//					.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
-//					.collect(Collectors.toSet());
-			cachedLevelAccessWrapper.awaitJob();
-			try {
-				trigonals = future.get();
-			} catch (InterruptedException | ExecutionException e) {
-				e.printStackTrace();
-			}
-			
-			// FEM analysis
 			fem.compute();
 		}
+		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+		this.toBlow.addAll(levelCache.getDestroyeds());
 		
-		DebugRenderer.addVertexDisplacement(cachedLevelAccessWrapper.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
 		
-		this.toBlow.addAll(cachedLevelAccessWrapper.getDestroyeds());
+//		var cachedLevelAccessWrapper = new CachedLevelAccessWrapper(Thread.currentThread(), this.level, this);
+//		
+//		System.out.println("explode 1.3 aa"); // DEBUG
+//		FEM fem = new FEM(cachedLevelAccessWrapper);
+//		
+//		var executor = Executors.newSingleThreadScheduledExecutor();
+//		while (!trigonals.isEmpty()) {
+//			DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+////			var feem = fem; // DEBUG
+//			// ray trace.
+//			var tmp = trigonals;
+//			var future = executor.submit(() -> {
+//				var ret = tmp.stream()
+//						.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+//						.collect(Collectors.toSet());
+//				cachedLevelAccessWrapper.endJobExecution();
+//				return ret;
+//			});
+////			trigonals = trigonals.stream()
+////					.flatMap(ray -> this.rayTraceStep(ray, fem, cachedLevelAccessWrapper))
+////					.collect(Collectors.toSet());
+//			cachedLevelAccessWrapper.awaitJob();
+//			try {
+//				trigonals = future.get();
+//			} catch (InterruptedException | ExecutionException e) {
+//				e.printStackTrace();
+//			}
+//			
+//			// FEM analysis
+//			fem.compute();
+//		}
+//		
+//		DebugRenderer.addVertexDisplacement(cachedLevelAccessWrapper.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+//		
+//		this.toBlow.addAll(cachedLevelAccessWrapper.getDestroyeds());
 		
 		// TODO
 		System.out.println("boom! A");
 	}
 	
-//	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess) {
-	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, CachedLevelAccessWrapper levelAccess) {
+	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess) {
+//	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, CachedLevelAccessWrapper levelAccess) {
 		var from = ray.trigonal().from();
 		var to = ray.trigonal().to();
 		
@@ -166,8 +184,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		return Arrays.stream(nextTrigonals).map(t -> new PressureRay(t, ray.intencity(), nextDivision, travelled, nextDivStep, false));
 	}
 	
-//	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
-	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
+	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
+//	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
 		double dirZ = to.z - from.z;
@@ -263,8 +281,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	 * @param levelAccess
 	 * @return
 	 */
-//	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
-	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
+	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
+//	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
 		double dirZ = to.z - from.z;

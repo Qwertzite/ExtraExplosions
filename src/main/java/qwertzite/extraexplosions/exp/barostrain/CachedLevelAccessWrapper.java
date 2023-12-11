@@ -31,12 +31,12 @@ public class CachedLevelAccessWrapper {
 	}
 	
 	public boolean isCurrentlyAirAt(BlockPos pos) {
-		var blockProperty = this.getBlockPropertyAt(pos);
+		var blockProperty = this.getBlockProperty(pos);
 		return blockProperty.isAir || blockProperty.destroyed;
 	}
 	
 	public void setDestroyed(BlockPos pos) {
-		var blockProperty = this.getBlockPropertyAt(pos);
+		var blockProperty = this.getBlockProperty(pos);
 		blockProperty.setDestroyed();
 	}
 	
@@ -49,7 +49,7 @@ public class CachedLevelAccessWrapper {
 	 * @param pos
 	 * @return
 	 */
-	public BlockProperty getBlockPropertyAt(BlockPos pos) {
+	public BlockProperty getBlockProperty(BlockPos pos) {
 		var prop =  this.blockProperty.computeIfAbsent(pos, p -> new BlockProperty());
 		synchronized (prop) { // initialisation
 			while (!prop.initialised) {
