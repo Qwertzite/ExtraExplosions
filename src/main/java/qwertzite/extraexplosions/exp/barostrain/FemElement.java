@@ -1,5 +1,7 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
+import java.util.EnumSet;
+
 import net.minecraft.core.BlockPos;
 
 public class FemElement {
@@ -8,6 +10,7 @@ public class FemElement {
 	
 	private double[][] displacement = new double[IntPoint.values().length][3];
 	private double[][][] sigma = new double[IntPoint.values().length][3][3];
+	private EnumSet<IntPoint> elasticDeformation = EnumSet.noneOf(IntPoint.class);
 	
 	private boolean needUpdate;
 	
@@ -23,6 +26,9 @@ public class FemElement {
 	
 	public boolean needsUpdate() { return this.needUpdate; }
 	
+	public void setElasticDeformed(IntPoint intPoint) {
+		this.elasticDeformation.add(intPoint);
+	}
 	public void setNewStatus(double[][] displacement, double[][][] sigma) {
 		this.needUpdate = false;
 		this.displacement = displacement;

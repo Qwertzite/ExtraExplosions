@@ -198,6 +198,31 @@ public class FEM {
 				sigma[i][i] += lambda * epsilon_m;
 			}
 			
+			{ // non-linear strain
+				double sigma_m = (sigma[0][0] + sigma[1][1] + sigma[2][2]) / 3.0d;
+				double mieses = 0.0d;
+				mieses += sigma[0][1] *sigma[0][1] + sigma[0][2] *sigma[0][2];
+				mieses += sigma[1][0] *sigma[1][0] + sigma[1][2] *sigma[1][2];
+				mieses += sigma[2][0] *sigma[2][0] + sigma[2][1] *sigma[2][1];
+				mieses *= 3.0d;
+				mieses += (sigma[0][0] - sigma[1][1]) * (sigma[0][0] - sigma[1][1]);
+				mieses += (sigma[1][1] - sigma[2][2]) * (sigma[1][1] - sigma[2][2]);
+				mieses += (sigma[2][2] - sigma[0][0]) * (sigma[2][2] - sigma[0][0]);
+				mieses *= 0.5d;
+				double hardness = elasticProperty.getHardness();
+				double g = sigma_m < 0 ? hardness / elasticProperty.getResistance() : 1.0d;
+				mieses += g * sigma_m * sigma_m;
+				if (mieses > hardness) { // elastic deformation
+					double deform = hardness / mieses;
+					for (int i = 0; i < 3; i++) {
+						sigma[i][0] *= deform;
+						sigma[i][1] *= deform;
+						sigma[i][2] *= deform;
+					}
+					elem.setElasticDeformed(intPt);
+				}
+			}
+			
 			finDisp[intPt.ordinal()] = disp;
 			finSigma[intPt.ordinal()] = sigma;
 		}
