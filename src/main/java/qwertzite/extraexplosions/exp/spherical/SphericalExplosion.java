@@ -66,7 +66,6 @@ public class SphericalExplosion extends EeExplosionBase {
 		DebugRenderer.clear();
 		Set<BlockPos> destroyed = Sets.newConcurrentHashSet();
 		
-//		RandomSource rand = this.random;
 		Set<ExplosionRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
 				.parallel()
 				.map(ray -> { 
@@ -77,6 +76,7 @@ public class SphericalExplosion extends EeExplosionBase {
 		
 		var levelCache = new SphericalLevelCache(this.level);
 		SphericalLevelCache.execute(levelCache, () -> {
+			levelCache.getBlockProperty(new BlockPos(this.getPosition())); // load block at the centre to reduce race conditions.
 			var tmp = trigonals;
 			while (!tmp.isEmpty()) {
 				DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
@@ -94,46 +94,12 @@ public class SphericalExplosion extends EeExplosionBase {
 			}
 		});
 		
-//		var blockPropertyCache = new BlockPropertyCache(this.level);
-//		var future = Executors
-//				.newSingleThreadExecutor(
-////						new BasicThreadFactory.Builder()
-////						.priority(Math.max(Thread.MIN_PRIORITY, Thread.currentThread().getPriority() - 1))
-////						.build()
-//						)
-//				.submit(
-//						() -> {
-//							var tmp = trigonals;
-//							while (!tmp.isEmpty()) {
-//								DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-//								tmp = tmp.parallelStream().flatMap(
-//										ray -> {
-//											try {
-//												var res = this.rayTraceStep(ray, destroyed, blockPropertyCache);
-//												return res;
-//											} catch (Exception e) {
-//												e.printStackTrace();
-//												ModLog.warn("Caught an unexpected exception while ray trace step. Please contact distributor of this mod.", e);
-//												return Stream.empty();
-//											}
-//										}).collect(Collectors.toSet());
-//							}
-//							blockPropertyCache.endJobExecution();
-//						});
-//		blockPropertyCache.awaitJob();
-//		try {
-//			future.get();
-//		} catch (InterruptedException | ExecutionException e) {
-//			e.printStackTrace();
-//		}
-		
 		this.toBlow.addAll(destroyed);
 		
 		this.attackEntity();
 	}
 	
 	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, SphericalLevelCache blockProperty) {
-//	private Stream<ExplosionRay> rayTraceStep(ExplosionRay ray, Set<BlockPos> destroyed, BlockPropertyCache blockProperty) {
 		
 		Stream<ExplosionRay> ret;
 		final float decrease = 0.3F;
@@ -273,7 +239,6 @@ public class SphericalExplosion extends EeExplosionBase {
 
 			for (BlockPos blockpos : this.toBlow) {
 				BlockState blockstate = this.level.getBlockState(blockpos);
-//				Block block = blockstate.getBlock();
 				if (!blockstate.isAir()) {
 					BlockPos immutablePos = blockpos.immutable();
 					this.level.getProfiler().push("ee.spherical.explosion_blocks");
@@ -289,7 +254,7 @@ public class SphericalExplosion extends EeExplosionBase {
 							if (this.blockInteraction == Explosion.BlockInteraction.DESTROY) {
 								lootcontext$builder.withParameter(LootContextParams.EXPLOSION_RADIUS, this.radius);
 							}
-
+							
 							blockstate.spawnAfterBreak(serverlevel, blockpos, ItemStack.EMPTY, explodedByPlayer);
 							blockstate.getDrops(lootcontext$builder).forEach((stack) -> {
 								addBlockDrops(objectarraylist, stack, immutablePos);
