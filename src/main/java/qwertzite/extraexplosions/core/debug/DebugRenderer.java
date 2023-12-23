@@ -104,7 +104,7 @@ public class DebugRenderer {
 				Vec3 s0 = ray.v1().add(ray.origin());
 				Vec3 s1 = ray.v2().add(ray.origin());
 				Vec3 s2 = ray.v3().add(ray.origin());
-				float alpha = 0.1f;
+				float alpha = 0.4f;
 				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
@@ -131,12 +131,12 @@ public class DebugRenderer {
 //			for (var element : this.nodeSet.stream().map(e -> e.getPosition()).collect(Collectors.toSet())) {
 			for (var element : DESTROYEDS) {
 				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/8.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/5.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/7.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
-				this.renderElement(element, bufferbuilder, mat, 1.0d/8.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
+				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
 				
-//				this.renderBody(element, bufferbuilder, mat, 1.0d/1.0d);
+				this.renderBody(element, bufferbuilder, mat, 1.0d/1.0d);
 			}
 		}
 		
@@ -313,6 +313,29 @@ public class DebugRenderer {
 		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
 		i = 2;
 		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
-	
 	}
+	
+	private void renderStrain(BlockPos pos, BufferBuilder bufferbuilder, Matrix4f mat, double scale) {
+		FemElement element = DebugRenderer.elementSet.getElementAt(pos);
+		var colour = new float[] {0.2f, 1.0f, 0.2f, 1.0f};
+		double cx = pos.getX() + 0.5d;
+		double cy = pos.getY() + 0.5d;
+		double cz = pos.getZ() + 0.5d;
+		Vec3[] poss = new Vec3[IntPoint.values().length];
+		for (int i = 0; i < IntPoint.values().length; i++) {
+			var intp = IntPoint.values()[i];
+			var offs = element.getDisplacementAt(intp);
+			poss[i] = new Vec3(
+					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
+					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
+					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
+		}
+		
+		int i = 0;
+		i = 0;
+		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
+		i = 1;
+		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
+	}
+	
 }

@@ -17,8 +17,8 @@ public class ShapeFunc {
 	private static final double N1d = pp * nn / 8.0d;
 	private static final double N0d = nn * nn / 8.0d;
 	
-	public static final double NA = 03 * (N2d*N2d + 2*N1d*N1d + N0d*N0d);
-	private static final double NBij = (N2d*N2d + 2*N2d*N1d + 2*N1d*N1d + 2*N1d*N0d + N0d*N0d) / 2.0d;
+	public static final double NA = 20 * (N2d*N2d + 2*N1d*N1d + N0d*N0d);
+	private static final double NBij = (N2d*N2d + 2*N2d*N1d + 2*N1d*N1d + 2*N1d*N0d + N0d*N0d);
 	public static final double NBii = N2d*N2d + 2*N1d*N1d + N0d*N0d;
 	public static final double NC = N3*N3 +3*N2*N2 + 3*N1*N1 + N0*N0;
 	
@@ -32,7 +32,7 @@ public class ShapeFunc {
 		var ret = 1.0d / 8;
 		for (int i = 0; i < 3; i++) {
 			if (i == j) { ret *= vertex.getSign(i); }
-			else { ret *= 1 + vertex.getSign(j) * intPt.getXi_i(i); }
+			else { ret *= 1 + vertex.getSign(i) * intPt.getXi_i(i); }
 		}
 		return ret;
 	}

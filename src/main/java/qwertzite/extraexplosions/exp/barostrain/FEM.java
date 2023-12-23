@@ -79,7 +79,7 @@ public class FEM {
 		
 		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
-		while (count > 0 && iter < 1024) {
+		while (count > 0 && iter < 1000) {
 			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
 				tmpDestroyed.add(e.getPosition());
@@ -97,7 +97,6 @@ public class FEM {
 			
 		}
 		tmpDestroyed.forEach(e -> this.level.setDestroyed(e)); // DEBUG
-//		this.nodeSet.stream().forEach(e -> System.out.println(e.getPosition() + ": " + e.getForceBalanceX() + " " + e.getForceBalanceY() + " " + e.getForceBalanceZ())); // DEBUG
 		
 		/*
 		 * COMEBACK 実装を進める
@@ -136,17 +135,14 @@ public class FEM {
 	private boolean filterExternalForceUpdated(FemNode node) {
 		boolean flag = node.getExternalForceUpdated();
 		return flag;
-//		return node.getExternalForceUpdated();
 	}
 	
 	private boolean filterForceImbalance(FemNode node) {
 		double norm = node.getForceBalanceNormSquared();
-		boolean allZero = true;
 		for (BlockPos adj : node.getAdjacentElements()) {
-//			var prop = this.level.getBlockProperty(adj);
 			var prop = this.level.getBlockProperty(adj);
 			var limit = prop.getHardness() / 16;
-			if (norm > limit*limit && norm > 0.05*0.05 && limit*limit > 0) return true;
+			if (norm > limit*limit && norm > 0.05*0.05 && limit > 0) return true;
 		}
 		return false;
 	}
@@ -164,7 +160,6 @@ public class FEM {
 	 */
 	private void computeElement(FemElement elem) {
 		var elementPosition = elem.getPosition();
-//		var elasticProperty = this.level.getBlockProperty(elementPosition);
 		var elasticProperty = this.level.getBlockProperty(elementPosition);
 		var mu = elasticProperty.getMuForElement();
 		var lambda = elasticProperty.getLambdaForElement();
@@ -183,7 +178,7 @@ public class FEM {
 					for (int i = 0; i < 3; i++) {
 						epsilon[j][i] += (
 								EeMath.getXi(vertexDisp, i) * ShapeFunc.partial(vertexOffset, j, intPt) +
-								EeMath.getXi(vertexDisp, j) * ShapeFunc.partial(vertexOffset, i, intPt)) * 0.5;
+								EeMath.getXi(vertexDisp, j) * ShapeFunc.partial(vertexOffset, i, intPt));
 					}
 					disp[j] += EeMath.getXi(vertexDisp, j) * ShapeFunc.value(vertexOffset, intPt);
 				}
@@ -210,15 +205,21 @@ public class FEM {
 				mieses += (sigma[2][2] - sigma[0][0]) * (sigma[2][2] - sigma[0][0]);
 				mieses *= 0.5d;
 				double hardness = elasticProperty.getHardness();
-				double g = sigma_m < 0 ? hardness / elasticProperty.getResistance() : 1.0d;
+				double resistance = elasticProperty.getResistance();
+				double g = sigma_m < 0 ? hardness / resistance : 1.0d;
 				mieses += g * sigma_m * sigma_m;
-				if (mieses > hardness) { // elastic deformation
-					double deform = hardness / mieses;
-					for (int i = 0; i < 3; i++) {
-						sigma[i][0] *= deform;
-						sigma[i][1] *= deform;
-						sigma[i][2] *= deform;
-					}
+				
+				// elastic deformation
+				if (mieses > hardness || !Double.isFinite(g)) { // beyond Mieses
+					double deform = Double.isFinite(g) ? hardness / mieses : 0.0d; // non finite "g" means that compressive strength is zero.
+//					for (int i = 0; i < 3; i++) {
+//						sigma[i][0] *= deform;
+//						sigma[i][1] *= deform;
+//						sigma[i][2] *= deform;
+//					}
+					if (Double.isNaN(deform)) System.out.println("NAN " + mieses + " " + hardness);
+					elem.setElasticDeformed(intPt);
+				} else if (mieses == hardness) {
 					elem.setElasticDeformed(intPt);
 				}
 			}
@@ -244,7 +245,6 @@ public class FEM {
 			var elementPosition = nodePosition.offset(elementOffset.getOffset());
 			var element = this.elementSet.getElementAt(elementPosition);
 			var elasticProperty = this.level.getBlockProperty(elementPosition);
-//			var elasticProperty = this.level.getBlockProperty(elementPosition);
 			var mass = elasticProperty.getMass();
 			
 			for (var intPt : IntPoint.values()) {
@@ -252,13 +252,21 @@ public class FEM {
 				double[] disp = element.getDisplacementAt(intPt);
 				double[][] sigma = element.getSigmaAt(intPt);
 				
+				double[] partial = new double[3]; // partial_j
+				partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
+				partial[1] = ShapeFunc.partial(elementOffset.getNodeVertex(), 1, intPt);
+				partial[2] = ShapeFunc.partial(elementOffset.getNodeVertex(), 2, intPt);
+				
 				// elastic component
 				for (int j = 0; j < 3; j++) {
-					var partial = ShapeFunc.partial(elementOffset.getNodeVertex(), j, intPt);
-					intForce[0] += 0.5 * sigma[j][0] * partial;
-					intForce[1] += 0.5 * sigma[j][1] * partial;
-					intForce[2] += 0.5 * sigma[j][2] * partial;
+					var del = partial[j];
+					intForce[0] += sigma[j][0] * del;
+					intForce[1] += sigma[j][1] * del;
+					intForce[2] += sigma[j][2] * del;
 				}
+				intForce[0] += sigma[0][0] * partial[0];
+				intForce[1] += sigma[1][1] * partial[1];
+				intForce[2] += sigma[2][2] * partial[2];
 				
 				// inertial component
 				var shapeFunc = ShapeFunc.value(elementOffset.getNodeVertex(), intPt);
@@ -280,7 +288,7 @@ public class FEM {
 			var elem = pos0.offset(offset);
 			var property = this.level.getBlockProperty(elem);
 			double mu = property.getMuForElement();
-			double muLambda = property.getLambdaForElement() / 3.0d + mu;
+			double muLambda = 4*property.getLambdaForElement() / 3.0d + 2*mu;
 			double mass = property.getMass();
 			
 			for (int i = 0; i < 3; i++) {

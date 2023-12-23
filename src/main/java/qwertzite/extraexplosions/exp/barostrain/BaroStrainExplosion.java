@@ -68,15 +68,18 @@ public class BaroStrainExplosion extends EeExplosionBase {
 			
 			while (!trigonals.isEmpty()) {
 				DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-				trigonals = trigonals.stream()
-						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
-						.collect(Collectors.toSet());
+//				trigonals = trigonals.stream()
+//						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
+//						.collect(Collectors.toSet()); DEBUG: enable after debugging
+				trigonals.clear();
+				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 1);
 				fem.compute();
+				
 			}
 		});
 		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
 		
-		this.toBlow.addAll(levelCache.getDestroyeds());
+//		this.toBlow.addAll(levelCache.getDestroyeds());
 		
 		System.out.println("boom! A");
 	}

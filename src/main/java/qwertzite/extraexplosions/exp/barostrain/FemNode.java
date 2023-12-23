@@ -4,6 +4,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * Represents vertex.
+ * @author Qwertzite
+ * @date 2023/12/23
+ */
 public class FemNode implements IForceAccumlator {
 	
 	private final BlockPos position;
