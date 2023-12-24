@@ -72,7 +72,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 //						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
 //						.collect(Collectors.toSet()); DEBUG: enable after debugging
 				trigonals.clear();
-				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 1);
+				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 4);
 				fem.compute();
 				
 			}

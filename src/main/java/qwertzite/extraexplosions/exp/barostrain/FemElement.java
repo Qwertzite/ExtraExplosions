@@ -42,4 +42,8 @@ public class FemElement {
 	public double[][] getSigmaAt(IntPoint intPt) {
 		return this.sigma[intPt.ordinal()];
 	}
+	
+	public boolean isElasticallyDeforming() {
+		return !this.elasticDeformation.isEmpty();
+	}
 }

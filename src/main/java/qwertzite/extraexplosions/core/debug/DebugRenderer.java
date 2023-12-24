@@ -132,11 +132,11 @@ public class DebugRenderer {
 			for (var element : DESTROYEDS) {
 				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
-				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
+				this.renderElement(element, bufferbuilder, mat, 1.0d/32.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
 				
-				this.renderBody(element, bufferbuilder, mat, 1.0d/1.0d);
+				this.renderBody(element, bufferbuilder, mat, 1.0d/32.0d);
 			}
 		}
 		
@@ -239,7 +239,7 @@ public class DebugRenderer {
 	
 	private void renderBody(BlockPos pos, BufferBuilder bufferbuilder, Matrix4f mat, double scale) {
 		FemElement element = DebugRenderer.elementSet.getElementAt(pos);
-		var colour = new float[] {0.2f, 1.0f, 0.2f, 1.0f};
+		var colour = element.isElasticallyDeforming() ? new float[] {1.0f, 0.0f, 0.7f, 1.0f} : new float[] {0.2f, 1.0f, 0.2f, 1.0f};
 		double cx = pos.getX() + 0.5d;
 		double cy = pos.getY() + 0.5d;
 		double cz = pos.getZ() + 0.5d;
