@@ -210,16 +210,14 @@ public class FEM {
 				mieses += g * sigma_m * sigma_m;
 				
 				// elastic deformation
-				if (mieses > hardness || !Double.isFinite(g)) { // beyond Mieses
-					double deform = Double.isFinite(g) ? hardness / mieses : 0.0d; // non finite "g" means that compressive strength is zero.
-//					for (int i = 0; i < 3; i++) {
-//						sigma[i][0] *= deform;
-//						sigma[i][1] *= deform;
-//						sigma[i][2] *= deform;
-//					}
+				if (mieses >= hardness || !Double.isFinite(g)) { // beyond Mieses
+					double deform = (Double.isFinite(g) && mieses > 0.0001d) ? hardness / mieses : 0.0d; // non finite "g" means that compressive strength is zero.
+					for (int i = 0; i < 3; i++) {
+						sigma[i][0] *= deform;
+						sigma[i][1] *= deform;
+						sigma[i][2] *= deform;
+					}
 					if (Double.isNaN(deform)) System.out.println("NAN " + mieses + " " + hardness);
-					elem.setElasticDeformed(intPt);
-				} else if (mieses == hardness) {
 					elem.setElasticDeformed(intPt);
 				}
 			}
