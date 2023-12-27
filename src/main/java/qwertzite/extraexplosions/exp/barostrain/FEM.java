@@ -236,6 +236,7 @@ public class FEM {
 	
 	private void computeInternalForce(FemNode node) {
 		BlockPos nodePosition = node.getPosition();
+		var nodeDisplacement = node.getDisp();
 		
 		var intForce = new double[3];
 		for (var elementOffset : NeighbourElement.values()) {
@@ -247,7 +248,6 @@ public class FEM {
 			
 			for (var intPt : IntPoint.values()) {
 				
-				double[] disp = element.getDisplacementAt(intPt);
 				double[][] sigma = element.getSigmaAt(intPt);
 				
 				double[] partial = new double[3]; // partial_j
@@ -266,12 +266,11 @@ public class FEM {
 				intForce[1] += sigma[1][1] * partial[1];
 				intForce[2] += sigma[2][2] * partial[2];
 				
-				// inertial component
-				var shapeFunc = ShapeFunc.value(elementOffset.getNodeVertex(), intPt);
-				intForce[0] += mass * disp[0] * shapeFunc;
-				intForce[1] += mass * disp[1] * shapeFunc;
-				intForce[2] += mass * disp[2] * shapeFunc;
 			}
+			// inertial component
+			intForce[0] += mass * nodeDisplacement.x();
+			intForce[1] += mass * nodeDisplacement.y();
+			intForce[2] += mass * nodeDisplacement.z();
 		}
 		node.setInternalForce(intForce[0], intForce[1], intForce[2]);
 	}
@@ -291,7 +290,7 @@ public class FEM {
 			
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 3; j++) { jacobian[i][j] += muLambda*ShapeFunc.nbij(offset, i, j); }
-				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass * ShapeFunc.NC;
+				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass;
 			}
 		}
 		
@@ -319,7 +318,7 @@ public class FEM {
 			
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 3; j++) { jacobian[i][j] += muLambda*ShapeFunc.nbij(offset, i, j); }
-				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass * ShapeFunc.NC;
+				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass;
 			}
 		}
 		

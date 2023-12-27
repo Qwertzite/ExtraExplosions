@@ -20,7 +20,6 @@ public class ShapeFunc {
 	public static final double NA = 20 * (N2d*N2d + 2*N1d*N1d + N0d*N0d);
 	private static final double NBij = (N2d*N2d + 2*N2d*N1d + 2*N1d*N1d + 2*N1d*N0d + N0d*N0d);
 	public static final double NBii = N2d*N2d + 2*N1d*N1d + N0d*N0d;
-	public static final double NC = N3*N3 +3*N2*N2 + 3*N1*N1 + N0*N0;
 	
 	public static double nbij(Vec3i offset, int i, int j) {
 		return  NBij
