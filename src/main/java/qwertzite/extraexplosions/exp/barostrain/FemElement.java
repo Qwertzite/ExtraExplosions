@@ -14,6 +14,8 @@ public class FemElement {
 	
 	private boolean needUpdate;
 	
+	private BlockCluster cluster;
+	
 	public FemElement(BlockPos position) {
 		this.position = position;
 	}
@@ -45,5 +47,22 @@ public class FemElement {
 	
 	public boolean isElasticallyDeforming() {
 		return !this.elasticDeformation.isEmpty();
+	}
+	
+	// ======== After deformation is determined ========
+	
+	public boolean belongToCluster() {
+		return this.cluster != null;
+	}
+	
+	/**
+	 * 
+	 * @param cluster
+	 * @return false if already set.
+	 */
+	public synchronized boolean setCluster(BlockCluster cluster) {
+		if (this.belongToCluster()) return false;
+		this.cluster = cluster;
+		return true;
 	}
 }

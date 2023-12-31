@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.exp.barostrain;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -70,7 +71,7 @@ public class FEM {
 		
 		long count = this.nodeSet.stream() // OPTIMISE: parallel
 				.filter(e -> {
-					if (!this.filterExternalForceUpdated(e) || !this.filterForceImbalance(e)) return false;
+					if (!this.filterExternalForceUpdated(e) || !this.isForceImbalanceAt(e)) return false;
 					this.markAdjacentElements(e);
 					this.computeInitialDisplacement(e);
 					return true;
@@ -88,7 +89,7 @@ public class FEM {
 					.filter(e -> {
 						this.computeInternalForce(e); // 前のループでの
 						
-						if (!this.filterForceImbalance(e)) return false;
+						if (!this.isForceImbalanceAt(e)) return false;
 						this.computeNextDisplacement(e);
 						this.markAdjacentElements(e); // ここまで確認
 						return true;
@@ -96,7 +97,6 @@ public class FEM {
 			System.out.println("iter=" + iter++ + ", count2=" + count);
 			
 		}
-		tmpDestroyed.forEach(e -> this.level.setDestroyed(e)); // DEBUG
 		
 		/*
 		 * COMEBACK 実装を進める
@@ -137,7 +137,7 @@ public class FEM {
 		return flag;
 	}
 	
-	private boolean filterForceImbalance(FemNode node) {
+	private boolean isForceImbalanceAt(FemNode node) {
 		double norm = node.getForceBalanceNormSquared();
 		for (BlockPos adj : node.getAdjacentElements()) {
 			var prop = this.level.getBlockProperty(adj);
@@ -335,4 +335,85 @@ public class FEM {
 	public NodeSet getNodeSet() { return this.nodeSet; }
 	public ElementSet getElementSet() { return this.elementSet; }
 	
+	// ======== destruction ========
+	
+	private void computeBlockGroup(ElementSet elements) {
+		elements.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
+		.forEach(e -> {
+			if (e.belongToCluster()) return;
+			BlockCluster cluster = new BlockCluster();
+			
+			if(!e.setCluster(cluster)) return; // already added to a group
+			if (e.isElasticallyDeforming()) return; // this block only.
+			
+			var pos = e.getPosition();
+			GroupResult ownResult = this.analyseElementStatus(e);
+			
+			var summation = Direction.stream().parallel().map(dir -> {
+				BlockPos p = pos.relative(dir);
+				var elem = this.elementSet.getElementAt(p);
+				var res = this.recursiveBlockGrouping(elem, cluster);
+				return res;
+			}).reduce(ownResult, (r1, r2) -> r1.add(r2));
+			
+			cluster.setFixed(summation.fixed);
+			// TODO: set result to block cluster
+		});
+	}
+	
+	private GroupResult recursiveBlockGrouping(FemElement e, BlockCluster cluster) {
+		if (e.isElasticallyDeforming()) return null; // other group
+		if (!e.setCluster(cluster)) return null; // already added to a group
+		var pos = e.getPosition();
+		GroupResult ownResult = this.analyseElementStatus(e);
+		
+		var summation = Direction.stream().parallel().map(dir -> {
+			BlockPos p = pos.relative(dir);
+			var elem = this.elementSet.getElementAt(p);
+			var result = this.recursiveBlockGrouping(elem, cluster);
+			return result;
+		}).reduce(ownResult, (r1, r2) -> r1.add(r2));
+		return summation;
+	}
+	
+	private GroupResult analyseElementStatus(FemElement elem) {
+		BlockPos pos = elem.getPosition();
+		var elasticProperty = this.level.getBlockProperty(pos);
+		var mass = elasticProperty.getMass();
+		
+		boolean fixed = false;
+		double[] inertia = new double[] {};
+		for (ElemVertex vertex : ElemVertex.values()) {
+			BlockPos p = pos.offset(vertex.getOffset());
+			var node = this.nodeSet.getNodeAt(p);
+			fixed |= this.isForceImbalanceAt(node);
+			var displacement = this.nodeSet.getDisplacementAt(p);
+			inertia[0] += mass * displacement.x();
+			inertia[1] += mass * displacement.y();
+			inertia[2] += mass * displacement.z();
+			// TODO: 面にかかった力の集計
+		}
+		
+		return new GroupResult(fixed, inertia);
+	}
+	
+	private static class GroupResult {
+		private boolean fixed = false;
+		private double[] inertia = new double[3];
+		
+		
+		public GroupResult(boolean fixed, double[] inertia) {
+			this.fixed = fixed;
+			this.inertia = inertia;
+		}
+		
+		public GroupResult add(GroupResult other) {
+			this.fixed |= other.fixed;
+			var inertia = other.inertia;
+			this.inertia[0] += inertia[0];
+			this.inertia[1] += inertia[1];
+			this.inertia[2] += inertia[2];
+			return this;
+		}
+	}
 }

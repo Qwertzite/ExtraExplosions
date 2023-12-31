@@ -75,6 +75,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 4);
 				fem.compute();
 				
+				// TODO: ここから
 			}
 		});
 		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
@@ -345,7 +346,6 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		}
 		return hitAxis;
 	}
-	
 
 	@Override
 	public void finalizeExplosion(boolean pSpawnParticles) {
