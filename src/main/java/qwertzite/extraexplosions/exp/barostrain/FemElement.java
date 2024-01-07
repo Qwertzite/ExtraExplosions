@@ -65,4 +65,8 @@ public class FemElement {
 		this.cluster = cluster;
 		return true;
 	}
+	
+	public boolean isFixed() {
+		return this.cluster.isFixed();
+	}
 }

@@ -51,6 +51,11 @@ public class BarostrainLevelCache extends LevelCache<qwertzite.extraexplosions.e
 		return blockProperty.isAir || blockProperty.destroyed;
 	}
 	
+	public boolean wasOriginallyAirAt(BlockPos pos) {
+		var blockProperty = this.getBlockProperty(pos);
+		return blockProperty.isAir && (!blockProperty.destroyed);
+	}
+	
 	public void setDestroyed(BlockPos pos) {
 		var blockProperty = this.getBlockProperty(pos);
 		blockProperty.setDestroyed();

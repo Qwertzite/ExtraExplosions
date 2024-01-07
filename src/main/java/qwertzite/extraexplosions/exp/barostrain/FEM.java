@@ -1,8 +1,8 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -98,38 +98,12 @@ public class FEM {
 			
 		}
 		
-		/*
-		 * COMEBACK 実装を進める
-		 *    実装２：マークしておいて，全部マークし終えたら計算する
-		 * nodeSet.stream()
-		 * .filter	balance
-		 * 			update displacement/vertex
-		 * 			mark target elements
-		 * .reduce	count
-		 * 
-		 * **** loop ****
-		 * 
-		 * femElements.stream()
-		 * .filter	updated
-		 * .forEach	computeElements		// ray iteration の間も保持する (変位が保持されている間，これも保持する)
-		 * 			mark updated nodes
-		 * 
-		 * femNodes.stream()
-		 * .filter	update balance
-		 * .forEach	compute internal force
-		 * .filter	balance
-		 * 			update displacement/vertex
-		 * 			mark target elements
-		 * .reduce count
-		 * 
-		 * 
-		 * NOTE: 破壊判定時は，=を破壊側に含める (h=0にfが掛かっている場合を含めるため)
-		 * 
-		 */
-		
-//		this.nodeSet.stream().forEach(e -> this.level.setDestroyed(e.getPosition())); // DEBUG
-		
 		System.out.println("FEM COMPLETED!"); // DEBUG
+		
+		this.computeBlockGroup();
+		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
+		
+		System.out.println("DEFORMATION!"); // DEBUG
 	}
 	
 	private boolean filterExternalForceUpdated(FemNode node) {
@@ -337,43 +311,37 @@ public class FEM {
 	
 	// ======== destruction ========
 	
-	private void computeBlockGroup(ElementSet elements) {
-		elements.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
-		.forEach(e -> {
-			if (e.belongToCluster()) return;
+	private void computeBlockGroup() {
+		this.elementSet.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
+		.forEach(elem -> {
+			if (elem.belongToCluster()) return;
 			BlockCluster cluster = new BlockCluster();
+			if(!elem.setCluster(cluster)) return; // already added to a group
+			GroupResult summary;
+			if (!elem.isElasticallyDeforming()) {
+				summary = recursiveBlockGrouping(elem, cluster, 0);
+			} else { // this block only
+				summary = this.analyseElementStatus(elem);
+			}
 			
-			if(!e.setCluster(cluster)) return; // already added to a group
-			if (e.isElasticallyDeforming()) return; // this block only.
-			
-			var pos = e.getPosition();
-			GroupResult ownResult = this.analyseElementStatus(e);
-			
-			var summation = Direction.stream().parallel().map(dir -> {
-				BlockPos p = pos.relative(dir);
-				var elem = this.elementSet.getElementAt(p);
-				var res = this.recursiveBlockGrouping(elem, cluster);
-				return res;
-			}).reduce(ownResult, (r1, r2) -> r1.add(r2));
-			
-			cluster.setFixed(summation.fixed);
+			cluster.setFixed(summary.fixed);
 			// TODO: set result to block cluster
 		});
 	}
 	
-	private GroupResult recursiveBlockGrouping(FemElement e, BlockCluster cluster) {
-		if (e.isElasticallyDeforming()) return null; // other group
-		if (!e.setCluster(cluster)) return null; // already added to a group
-		var pos = e.getPosition();
-		GroupResult ownResult = this.analyseElementStatus(e);
-		
-		var summation = Direction.stream().parallel().map(dir -> {
+	private GroupResult recursiveBlockGrouping(FemElement elem, BlockCluster cluster, int index) {
+		var pos = elem.getPosition();
+		GroupResult summary = this.analyseElementStatus(elem);
+		summary = Direction.stream().parallel().map(dir -> {
 			BlockPos p = pos.relative(dir);
-			var elem = this.elementSet.getElementAt(p);
-			var result = this.recursiveBlockGrouping(elem, cluster);
+			var adjacent = this.elementSet.getExistingElementAt(p);
+			if (adjacent == null) return null; // Not computed.
+			if (adjacent.isElasticallyDeforming()) return null; // other group
+			if (!adjacent.setCluster(cluster)) return null; // already added to a group
+			var result = this.recursiveBlockGrouping(adjacent, cluster, index + 1);
 			return result;
-		}).reduce(ownResult, (r1, r2) -> r1.add(r2));
-		return summation;
+		}).filter(Objects::nonNull).reduce(summary, (r1, r2) -> r1.add(r2));
+		return summary;
 	}
 	
 	private GroupResult analyseElementStatus(FemElement elem) {
@@ -382,11 +350,11 @@ public class FEM {
 		var mass = elasticProperty.getMass();
 		
 		boolean fixed = false;
-		double[] inertia = new double[] {};
+		double[] inertia = new double[3];
 		for (ElemVertex vertex : ElemVertex.values()) {
 			BlockPos p = pos.offset(vertex.getOffset());
 			var node = this.nodeSet.getNodeAt(p);
-			fixed |= this.isForceImbalanceAt(node);
+			fixed |= node.getDisp().lengthSqr() < 0.000000001 * 0.000000001;
 			var displacement = this.nodeSet.getDisplacementAt(p);
 			inertia[0] += mass * displacement.x();
 			inertia[1] += mass * displacement.y();

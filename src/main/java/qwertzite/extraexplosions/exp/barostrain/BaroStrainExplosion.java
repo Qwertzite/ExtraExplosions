@@ -78,9 +78,9 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				// TODO: ここから
 			}
 		});
-		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+		DebugRenderer.addVertexDisplacement(levelCache, fem.getNodeSet(), fem.getElementSet());
 		
-//		this.toBlow.addAll(levelCache.getDestroyeds());
+		this.toBlow.addAll(levelCache.getDestroyeds());
 		
 		System.out.println("boom! A");
 	}

@@ -22,7 +22,11 @@ public class ElementSet {
 		return map.computeIfAbsent(pos, k -> new FemElement(k));
 	}
 	
+	public FemElement getExistingElementAt(BlockPos pos) {
+		return map.getOrDefault(pos, null);
+	}
+	
 	public Map<BlockPos, FemElement> getElements() {
-		return this.getElements();
+		return this.map;
 	}
 }
