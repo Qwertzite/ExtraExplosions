@@ -71,10 +71,9 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				trigonals = trigonals.stream()
 						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
 						.collect(Collectors.toSet());
-				trigonals.clear();
+				trigonals.clear(); // DEBUG prevent next step.
 //				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 4); DEBUG remove after debugging
 				fem.compute();
-				
 				// TODO: ここから
 			}
 		});

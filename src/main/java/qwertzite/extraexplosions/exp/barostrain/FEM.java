@@ -3,10 +3,11 @@ package qwertzite.extraexplosions.exp.barostrain;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Vec3i;
 import net.minecraft.world.phys.Vec3;
 import qwertzite.extraexplosions.util.math.EeMath;
 
@@ -82,7 +83,7 @@ public class FEM {
 		
 		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
-		while (count > 0 && iter < 1000) {
+		while (count > 0 && iter < 10000) {
 			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
 				tmpDestroyed.add(e.getPosition());
@@ -101,11 +102,11 @@ public class FEM {
 		}
 		
 		System.out.println("FEM COMPLETED!"); // DEBUG
-		long time = System.currentTimeMillis();
+		long time = System.nanoTime();
 		this.computeBlockGroup();
 		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
-		time = System.currentTimeMillis() - time;
-		System.out.println("Took " + time + " ms for clustering.");
+		time = System.nanoTime() - time;
+		System.out.println("Took " + time + " ns for clustering.");
 		
 		System.out.println("DEFORMATION!"); // DEBUG
 	}
@@ -281,7 +282,7 @@ public class FEM {
 		return node;
 	}
 	
-	private FemNode computeNextDisplacement(FemNode node) { // IMPL: ******** 変位の状態によって影響は受けないのか確認する ********
+	private FemNode computeNextDisplacement(FemNode node) {
 		BlockPos pos0 = node.getPosition();
 		
 		var elemOffset = FemNode.getAdjacentElementOffsets();
@@ -323,7 +324,15 @@ public class FEM {
 			if(!elem.setCluster(cluster)) return; // already added to a group
 			GroupResult summary;
 			if (!elem.isElasticallyDeforming()) {
-				summary = recursiveBlockGrouping(elem, cluster, 0);
+				ConcurrentLinkedQueue<FemElement> queue = new ConcurrentLinkedQueue<>();
+				queue.add(elem);
+				summary = GroupResult.empty();
+				while (!queue.isEmpty()) {
+					queue.spliterator();
+					summary = Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull) // poll elements till the queue is empty
+							.map(e -> this.searchBlockGrouping(e, cluster, queue))
+							.reduce(summary, (s1, s2) -> s1.add(s2));
+				}
 			} else { // this block only
 				summary = this.analyseElementStatus(elem);
 				summary.fixed = false; // force destruction
@@ -334,20 +343,20 @@ public class FEM {
 		});
 	}
 	
-	private GroupResult recursiveBlockGrouping(FemElement elem, BlockCluster cluster, int index) {
+	private GroupResult searchBlockGrouping(FemElement elem, BlockCluster cluster, ConcurrentLinkedQueue<FemElement> queue) {
 		var pos = elem.getPosition();
-//		System.out.println(pos + " " + index); // DEBUG
-		GroupResult summary = this.analyseElementStatus(elem);
-		summary = Direction.stream().parallel().map(dir -> {
+		Direction.stream().forEach(dir -> {
 			BlockPos p = pos.relative(dir);
 			var adjacent = this.elementSet.getExistingElementAt(p);
-			if (adjacent == null) return null; // Not computed.
-			if (adjacent.isElasticallyDeforming()) return null; // other group
-			if (!adjacent.setCluster(cluster)) return null; // already added to a group
-			var result = this.recursiveBlockGrouping(adjacent, cluster, index + 1);
-			return result;
-		}).filter(Objects::nonNull).reduce(summary, (r1, r2) -> r1.add(r2));
-		return summary;
+			if (adjacent == null) return; // Not computed.
+			if (adjacent.isElasticallyDeforming()) return; // other group
+			if (!adjacent.setCluster(cluster)) return; // already added to a group
+			queue.add(adjacent);
+		});
+		var result = this.analyseElementStatus(elem);
+//		System.out.println(pos + " " + result);
+		return result;
+//		return this.analyseElementStatus(elem);
 	}
 	
 	private GroupResult analyseElementStatus(FemElement elem) {
@@ -360,13 +369,11 @@ public class FEM {
 		for (ElemVertex vertex : ElemVertex.values()) {
 			BlockPos p = pos.offset(vertex.getOffset());
 			var node = this.nodeSet.getNodeAt(p);
-//			fixed |= node.getDisp().lengthSqr() < 0.000000001 * 0.000000001; // FIXME: テスト中
 			fixed |= node.getDisp().equals(Vec3.ZERO);
 			var displacement = this.nodeSet.getDisplacementAt(p);
 			inertia[0] += mass * displacement.x();
 			inertia[1] += mass * displacement.y();
 			inertia[2] += mass * displacement.z();
-			// TODO: 面にかかった力の集計
 		}
 		
 		return new GroupResult(fixed, inertia);
@@ -375,11 +382,15 @@ public class FEM {
 	private static class GroupResult {
 		private boolean fixed = false;
 		private double[] inertia = new double[3];
-		
+		private int depth;
 		
 		public GroupResult(boolean fixed, double[] inertia) {
 			this.fixed = fixed;
 			this.inertia = inertia;
+		}
+		
+		public static GroupResult empty() {
+			return new GroupResult(false, new double[3]);
 		}
 		
 		public GroupResult add(GroupResult other) {
@@ -388,7 +399,13 @@ public class FEM {
 			this.inertia[0] += inertia[0];
 			this.inertia[1] += inertia[1];
 			this.inertia[2] += inertia[2];
+			this.depth = Math.max(this.depth, other.depth);
 			return this;
+		}
+		
+		@Override
+		public String toString() {
+			return "fix=" + this.fixed + ",in=" + this.inertia; 
 		}
 	}
 }
