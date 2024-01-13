@@ -322,10 +322,11 @@ public class FEM {
 			if (elem.belongToCluster()) return;
 			BlockCluster cluster = new BlockCluster();
 			if(!elem.setCluster(cluster)) return; // already added to a group
+			
 			GroupResult summary;
 			if (!elem.isElasticallyDeforming()) {
 				ConcurrentLinkedQueue<FemElement> queue = new ConcurrentLinkedQueue<>();
-				queue.add(elem);
+				queue.add(elem); // the first element
 				summary = GroupResult.empty();
 				while (!queue.isEmpty()) {
 					queue.spliterator();
@@ -353,10 +354,7 @@ public class FEM {
 			if (!adjacent.setCluster(cluster)) return; // already added to a group
 			queue.add(adjacent);
 		});
-		var result = this.analyseElementStatus(elem);
-//		System.out.println(pos + " " + result);
-		return result;
-//		return this.analyseElementStatus(elem);
+		return this.analyseElementStatus(elem);
 	}
 	
 	private GroupResult analyseElementStatus(FemElement elem) {
