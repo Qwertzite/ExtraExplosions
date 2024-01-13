@@ -3,6 +3,7 @@ package qwertzite.extraexplosions.core.debug;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -20,6 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import qwertzite.extraexplosions.exmath.RayTrigonal;
+import qwertzite.extraexplosions.exp.barostrain.BarostrainLevelCache;
 import qwertzite.extraexplosions.exp.barostrain.ElementSet;
 import qwertzite.extraexplosions.exp.barostrain.FemElement;
 import qwertzite.extraexplosions.exp.barostrain.FemNode;
@@ -29,7 +31,7 @@ import qwertzite.extraexplosions.exp.barostrain.NodeSet;
 public class DebugRenderer {
 	
 	private static final Set<RayTrigonal> RAY_TRIAGONALS = new HashSet<>();
-	private static final Set<BlockPos> DESTROYEDS = new HashSet<>();
+	private static final Set<BlockPos> RENDER_TARGET = new HashSet<>();
 	private static NodeSet nodeSet = new NodeSet();
 	private static ElementSet elementSet = new ElementSet();
 	public static boolean render = true;
@@ -37,7 +39,7 @@ public class DebugRenderer {
 	public static void clear() {
 		synchronized (RAY_TRIAGONALS) {
 			RAY_TRIAGONALS.clear();
-			DESTROYEDS.clear();
+			RENDER_TARGET.clear();
 		}
 	}
 	
@@ -47,10 +49,12 @@ public class DebugRenderer {
 		}
 	}
 	
-	public static void addVertexDisplacement(Set<BlockPos> destroyeds, NodeSet nodes, ElementSet elements) {
-		synchronized (DESTROYEDS) {
-			DESTROYEDS.addAll(destroyeds);
-		}
+	public static void addVertexDisplacement(BarostrainLevelCache level$, NodeSet nodes, ElementSet elements) {
+		var target = elements.getElements().values().parallelStream()
+				.map(FemElement::getPosition)
+				.filter(e -> !level$.wasOriginallyAirAt(e))
+				.collect(Collectors.toSet());
+		synchronized (RENDER_TARGET) { RENDER_TARGET.addAll(target); }
 		DebugRenderer.nodeSet = nodes;
 		DebugRenderer.elementSet = elements;
 	}
@@ -75,7 +79,7 @@ public class DebugRenderer {
 		pose.translate(-cameraPos.x(), -cameraPos.y(), -cameraPos.z());
 		
 		var mat = pose.last().pose();
-//		this.renderRayTrigonals(mat);
+		this.renderRayTrigonals(mat);
 		this.renderVectorMap(mat);
 		
 		
@@ -104,7 +108,7 @@ public class DebugRenderer {
 				Vec3 s0 = ray.v1().add(ray.origin());
 				Vec3 s1 = ray.v2().add(ray.origin());
 				Vec3 s2 = ray.v3().add(ray.origin());
-				float alpha = 0.1f;
+				float alpha = 0.2f;
 				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
@@ -118,25 +122,25 @@ public class DebugRenderer {
 	
 	public void renderVectorMap(Matrix4f mat) {
 //		System.out.println(VECTOR_MAP.size());
-		if (DESTROYEDS.isEmpty()) return;
+		if (RENDER_TARGET.isEmpty()) return;
 		
 		Tesselator tessellator = Tesselator.getInstance();
 		BufferBuilder bufferbuilder = tessellator.getBuilder();
 		RenderSystem.setShader(GameRenderer::getPositionColorShader);
 		
 		bufferbuilder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-		final double scale = 1.0d / 1d;
+		final double scale = 1.0d / 100000.0d;
 		
-		synchronized (DESTROYEDS) {
+		synchronized (RENDER_TARGET) {
 //			for (var element : this.nodeSet.stream().map(e -> e.getPosition()).collect(Collectors.toSet())) {
-			for (var element : DESTROYEDS) {
-				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/8.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/5.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
-//				this.renderElement(element, bufferbuilder, mat, 1.0d/7.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
-				this.renderElement(element, bufferbuilder, mat, 1.0d/8.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
+			for (var element : RENDER_TARGET) {
+//				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, scale, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
 				
-//				this.renderBody(element, bufferbuilder, mat, 1.0d/1.0d);
+				this.renderBody(element, bufferbuilder, mat, scale);
 			}
 		}
 		
@@ -168,7 +172,7 @@ public class DebugRenderer {
 		bufferbuilder.vertex(mat, (float) (pos1.getX() + tmp.x()*scale),  (float) (pos1.getY() + tmp.y()*scale),  (float) (pos1.getZ() + tmp.z()*scale)).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
 		
 		pos0 = element.offset(1, 0, 0); // x
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(0, 1, 0);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -182,7 +186,7 @@ public class DebugRenderer {
 		}
 		
 		pos0 = element.offset(0, 1, 0); // y
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(1, 0, 0);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -196,7 +200,7 @@ public class DebugRenderer {
 		}
 		
 		pos0 = element.offset(0, 0, 1); // z
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(1, 0, 0);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -210,7 +214,7 @@ public class DebugRenderer {
 		}
 		
 		pos0 = element.offset(1, 1, 0); // xy
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(0, 0, 1);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -219,7 +223,7 @@ public class DebugRenderer {
 		}
 		
 		pos0 = element.offset(1, 0, 1); // xz
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(0, 1, 0);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -228,7 +232,7 @@ public class DebugRenderer {
 		}
 		
 		pos0 = element.offset(0, 1, 1); // yx
-		if (!DESTROYEDS.contains(pos0)) {
+		if (!RENDER_TARGET.contains(pos0)) {
 			vec = target.apply(nodeSet.getNodeIfExist(pos0));
 			pos1 = pos0.offset(1, 0, 0);
 			tmp = target.apply(nodeSet.getNodeIfExist(pos1));
@@ -239,7 +243,7 @@ public class DebugRenderer {
 	
 	private void renderBody(BlockPos pos, BufferBuilder bufferbuilder, Matrix4f mat, double scale) {
 		FemElement element = DebugRenderer.elementSet.getElementAt(pos);
-		var colour = new float[] {0.2f, 1.0f, 0.2f, 1.0f};
+		var colour = element.isElasticallyDeforming() ? new float[] {1.0f, 0.0f, 0.7f, 1.0f} : new float[] {0.2f, 1.0f, 0.2f, 1.0f};
 		double cx = pos.getX() + 0.5d;
 		double cy = pos.getY() + 0.5d;
 		double cz = pos.getZ() + 0.5d;
@@ -247,10 +251,14 @@ public class DebugRenderer {
 		for (int i = 0; i < IntPoint.values().length; i++) {
 			var intp = IntPoint.values()[i];
 			var offs = element.getDisplacementAt(intp);
+//			poss[i] = new Vec3(
+//					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
+//					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
+//					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
 			poss[i] = new Vec3(
-					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
-					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
-					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
+					cx + intp.getSign_i(0)/2.0d + offs[0]*scale,
+					cy + intp.getSign_i(1)/2.0d + offs[1]*scale,
+					cz + intp.getSign_i(2)/2.0d + offs[2]*scale);
 		}
 		
 		int i = 0;
@@ -313,6 +321,29 @@ public class DebugRenderer {
 		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
 		i = 2;
 		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
-	
 	}
+	
+	private void renderStrain(BlockPos pos, BufferBuilder bufferbuilder, Matrix4f mat, double scale) {
+		FemElement element = DebugRenderer.elementSet.getElementAt(pos);
+		var colour = new float[] {0.2f, 1.0f, 0.2f, 1.0f};
+		double cx = pos.getX() + 0.5d;
+		double cy = pos.getY() + 0.5d;
+		double cz = pos.getZ() + 0.5d;
+		Vec3[] poss = new Vec3[IntPoint.values().length];
+		for (int i = 0; i < IntPoint.values().length; i++) {
+			var intp = IntPoint.values()[i];
+			var offs = element.getDisplacementAt(intp);
+			poss[i] = new Vec3(
+					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
+					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
+					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
+		}
+		
+		int i = 0;
+		i = 0;
+		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
+		i = 1;
+		bufferbuilder.vertex(mat, (float) (poss[i].x()), (float) (poss[i].y()), (float) (poss[i].z())).color(colour[0], colour[1], colour[2], colour[3]).endVertex();
+	}
+	
 }

@@ -1,10 +1,14 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 import qwertzite.extraexplosions.util.math.EeMath;
 
 public class FEM {
@@ -70,7 +74,7 @@ public class FEM {
 		
 		long count = this.nodeSet.stream() // OPTIMISE: parallel
 				.filter(e -> {
-					if (!this.filterExternalForceUpdated(e) || !this.filterForceImbalance(e)) return false;
+					if (!this.filterExternalForceUpdated(e) || !this.isForceImbalanceAt(e)) return false;
 					this.markAdjacentElements(e);
 					this.computeInitialDisplacement(e);
 					return true;
@@ -79,7 +83,7 @@ public class FEM {
 		
 		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
-		while (count > 0 && iter < 1024) {
+		while (count > 0 && iter < 10000) {
 			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
 				tmpDestroyed.add(e.getPosition());
@@ -88,7 +92,7 @@ public class FEM {
 					.filter(e -> {
 						this.computeInternalForce(e); // 前のループでの
 						
-						if (!this.filterForceImbalance(e)) return false;
+						if (!this.isForceImbalanceAt(e)) return false;
 						this.computeNextDisplacement(e);
 						this.markAdjacentElements(e); // ここまで確認
 						return true;
@@ -96,57 +100,28 @@ public class FEM {
 			System.out.println("iter=" + iter++ + ", count2=" + count);
 			
 		}
-		tmpDestroyed.forEach(e -> this.level.setDestroyed(e)); // DEBUG
-//		this.nodeSet.stream().forEach(e -> System.out.println(e.getPosition() + ": " + e.getForceBalanceX() + " " + e.getForceBalanceY() + " " + e.getForceBalanceZ())); // DEBUG
-		
-		/*
-		 * COMEBACK 実装を進める
-		 *    実装２：マークしておいて，全部マークし終えたら計算する
-		 * nodeSet.stream()
-		 * .filter	balance
-		 * 			update displacement/vertex
-		 * 			mark target elements
-		 * .reduce	count
-		 * 
-		 * **** loop ****
-		 * 
-		 * femElements.stream()
-		 * .filter	updated
-		 * .forEach	computeElements		// ray iteration の間も保持する (変位が保持されている間，これも保持する)
-		 * 			mark updated nodes
-		 * 
-		 * femNodes.stream()
-		 * .filter	update balance
-		 * .forEach	compute internal force
-		 * .filter	balance
-		 * 			update displacement/vertex
-		 * 			mark target elements
-		 * .reduce count
-		 * 
-		 * 
-		 * NOTE: 破壊判定時は，=を破壊側に含める (h=0にfが掛かっている場合を含めるため)
-		 * 
-		 */
-		
-//		this.nodeSet.stream().forEach(e -> this.level.setDestroyed(e.getPosition())); // DEBUG
 		
 		System.out.println("FEM COMPLETED!"); // DEBUG
+		long time = System.nanoTime();
+		this.computeBlockGroup();
+		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
+		time = System.nanoTime() - time;
+		System.out.println("Took " + time + " ns for clustering.");
+		
+		System.out.println("DEFORMATION!"); // DEBUG
 	}
 	
 	private boolean filterExternalForceUpdated(FemNode node) {
 		boolean flag = node.getExternalForceUpdated();
 		return flag;
-//		return node.getExternalForceUpdated();
 	}
 	
-	private boolean filterForceImbalance(FemNode node) {
+	private boolean isForceImbalanceAt(FemNode node) {
 		double norm = node.getForceBalanceNormSquared();
-		boolean allZero = true;
 		for (BlockPos adj : node.getAdjacentElements()) {
-//			var prop = this.level.getBlockProperty(adj);
 			var prop = this.level.getBlockProperty(adj);
 			var limit = prop.getHardness() / 16;
-			if (norm > limit*limit && norm > 0.05*0.05 && limit*limit > 0) return true;
+			if (norm > limit*limit && norm > 0.05*0.05 && limit > 0) return true;
 		}
 		return false;
 	}
@@ -164,7 +139,6 @@ public class FEM {
 	 */
 	private void computeElement(FemElement elem) {
 		var elementPosition = elem.getPosition();
-//		var elasticProperty = this.level.getBlockProperty(elementPosition);
 		var elasticProperty = this.level.getBlockProperty(elementPosition);
 		var mu = elasticProperty.getMuForElement();
 		var lambda = elasticProperty.getLambdaForElement();
@@ -183,7 +157,7 @@ public class FEM {
 					for (int i = 0; i < 3; i++) {
 						epsilon[j][i] += (
 								EeMath.getXi(vertexDisp, i) * ShapeFunc.partial(vertexOffset, j, intPt) +
-								EeMath.getXi(vertexDisp, j) * ShapeFunc.partial(vertexOffset, i, intPt)) * 0.5;
+								EeMath.getXi(vertexDisp, j) * ShapeFunc.partial(vertexOffset, i, intPt));
 					}
 					disp[j] += EeMath.getXi(vertexDisp, j) * ShapeFunc.value(vertexOffset, intPt);
 				}
@@ -196,6 +170,35 @@ public class FEM {
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 3; j++) { sigma[j][i] = 2 * mu * epsilon[j][i]; }
 				sigma[i][i] += lambda * epsilon_m;
+			}
+			
+			{ // non-linear strain
+				double sigma_m = (sigma[0][0] + sigma[1][1] + sigma[2][2]) / 3.0d;
+				double mieses = 0.0d;
+				mieses += sigma[0][1] *sigma[0][1] + sigma[0][2] *sigma[0][2];
+				mieses += sigma[1][0] *sigma[1][0] + sigma[1][2] *sigma[1][2];
+				mieses += sigma[2][0] *sigma[2][0] + sigma[2][1] *sigma[2][1];
+				mieses *= 3.0d;
+				mieses += (sigma[0][0] - sigma[1][1]) * (sigma[0][0] - sigma[1][1]);
+				mieses += (sigma[1][1] - sigma[2][2]) * (sigma[1][1] - sigma[2][2]);
+				mieses += (sigma[2][2] - sigma[0][0]) * (sigma[2][2] - sigma[0][0]);
+				mieses *= 0.5d;
+				double hardness = elasticProperty.getHardness();
+				double resistance = elasticProperty.getResistance();
+				double g = sigma_m < 0 ? hardness / resistance : 1.0d;
+				mieses += g * sigma_m * sigma_m * 0.1;
+				
+				// elastic deformation
+				if (mieses >= hardness || !Double.isFinite(g)) { // beyond Mieses
+					double deform = (Double.isFinite(g) && mieses > 0.0001d) ? hardness / mieses : 0.0d; // non finite "g" means that compressive strength is zero.
+					for (int i = 0; i < 3; i++) {
+						sigma[i][0] *= deform;
+						sigma[i][1] *= deform;
+						sigma[i][2] *= deform;
+					}
+					if (Double.isNaN(deform)) System.out.println("NAN " + mieses + " " + hardness);
+					elem.setElasticDeformed(intPt);
+				}
 			}
 			
 			finDisp[intPt.ordinal()] = disp;
@@ -212,6 +215,7 @@ public class FEM {
 	
 	private void computeInternalForce(FemNode node) {
 		BlockPos nodePosition = node.getPosition();
+		var nodeDisplacement = node.getDisp();
 		
 		var intForce = new double[3];
 		for (var elementOffset : NeighbourElement.values()) {
@@ -219,28 +223,33 @@ public class FEM {
 			var elementPosition = nodePosition.offset(elementOffset.getOffset());
 			var element = this.elementSet.getElementAt(elementPosition);
 			var elasticProperty = this.level.getBlockProperty(elementPosition);
-//			var elasticProperty = this.level.getBlockProperty(elementPosition);
 			var mass = elasticProperty.getMass();
 			
 			for (var intPt : IntPoint.values()) {
 				
-				double[] disp = element.getDisplacementAt(intPt);
 				double[][] sigma = element.getSigmaAt(intPt);
+				
+				double[] partial = new double[3]; // partial_j
+				partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
+				partial[1] = ShapeFunc.partial(elementOffset.getNodeVertex(), 1, intPt);
+				partial[2] = ShapeFunc.partial(elementOffset.getNodeVertex(), 2, intPt);
 				
 				// elastic component
 				for (int j = 0; j < 3; j++) {
-					var partial = ShapeFunc.partial(elementOffset.getNodeVertex(), j, intPt);
-					intForce[0] += 0.5 * sigma[j][0] * partial;
-					intForce[1] += 0.5 * sigma[j][1] * partial;
-					intForce[2] += 0.5 * sigma[j][2] * partial;
+					var del = partial[j];
+					intForce[0] += sigma[j][0] * del;
+					intForce[1] += sigma[j][1] * del;
+					intForce[2] += sigma[j][2] * del;
 				}
+				intForce[0] += sigma[0][0] * partial[0];
+				intForce[1] += sigma[1][1] * partial[1];
+				intForce[2] += sigma[2][2] * partial[2];
 				
-				// inertial component
-				var shapeFunc = ShapeFunc.value(elementOffset.getNodeVertex(), intPt);
-				intForce[0] += mass * disp[0] * shapeFunc;
-				intForce[1] += mass * disp[1] * shapeFunc;
-				intForce[2] += mass * disp[2] * shapeFunc;
 			}
+			// inertial component
+			intForce[0] += mass * nodeDisplacement.x();
+			intForce[1] += mass * nodeDisplacement.y();
+			intForce[2] += mass * nodeDisplacement.z();
 		}
 		node.setInternalForce(intForce[0], intForce[1], intForce[2]);
 	}
@@ -255,12 +264,12 @@ public class FEM {
 			var elem = pos0.offset(offset);
 			var property = this.level.getBlockProperty(elem);
 			double mu = property.getMuForElement();
-			double muLambda = property.getLambdaForElement() / 3.0d + mu;
+			double muLambda = 4*property.getLambdaForElement() / 3.0d + 2*mu;
 			double mass = property.getMass();
 			
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 3; j++) { jacobian[i][j] += muLambda*ShapeFunc.nbij(offset, i, j); }
-				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass * ShapeFunc.NC;
+				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass;
 			}
 		}
 		
@@ -273,7 +282,7 @@ public class FEM {
 		return node;
 	}
 	
-	private FemNode computeNextDisplacement(FemNode node) { // IMPL: ******** 変位の状態によって影響は受けないのか確認する ********
+	private FemNode computeNextDisplacement(FemNode node) {
 		BlockPos pos0 = node.getPosition();
 		
 		var elemOffset = FemNode.getAdjacentElementOffsets();
@@ -288,7 +297,7 @@ public class FEM {
 			
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 3; j++) { jacobian[i][j] += muLambda*ShapeFunc.nbij(offset, i, j); }
-				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass * ShapeFunc.NC;
+				jacobian[i][i] += mu * ShapeFunc.NA + muLambda * (ShapeFunc.NBii - ShapeFunc.nbij(offset, i, i)) + mass;
 			}
 		}
 		
@@ -305,4 +314,96 @@ public class FEM {
 	public NodeSet getNodeSet() { return this.nodeSet; }
 	public ElementSet getElementSet() { return this.elementSet; }
 	
+	// ======== destruction ========
+	
+	private void computeBlockGroup() {
+		this.elementSet.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
+		.forEach(elem -> {
+			if (elem.belongToCluster()) return;
+			BlockCluster cluster = new BlockCluster();
+			if(!elem.setCluster(cluster)) return; // already added to a group
+			
+			GroupResult summary;
+			if (!elem.isElasticallyDeforming()) {
+				ConcurrentLinkedQueue<FemElement> queue = new ConcurrentLinkedQueue<>();
+				queue.add(elem); // the first element
+				summary = GroupResult.empty();
+				while (!queue.isEmpty()) {
+					queue.spliterator();
+					summary = Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull) // poll elements till the queue is empty
+							.map(e -> this.searchBlockGrouping(e, cluster, queue))
+							.reduce(summary, (s1, s2) -> s1.add(s2));
+				}
+			} else { // this block only
+				summary = this.analyseElementStatus(elem);
+				summary.fixed = false; // force destruction
+			}
+			
+			cluster.setFixed(summary.fixed);
+			// TODO: set result to block cluster
+		});
+	}
+	
+	private GroupResult searchBlockGrouping(FemElement elem, BlockCluster cluster, ConcurrentLinkedQueue<FemElement> queue) {
+		var pos = elem.getPosition();
+		Direction.stream().forEach(dir -> {
+			BlockPos p = pos.relative(dir);
+			var adjacent = this.elementSet.getExistingElementAt(p);
+			if (adjacent == null) return; // Not computed.
+			if (adjacent.isElasticallyDeforming()) return; // other group
+			if (!adjacent.setCluster(cluster)) return; // already added to a group
+			queue.add(adjacent);
+		});
+		return this.analyseElementStatus(elem);
+	}
+	
+	private GroupResult analyseElementStatus(FemElement elem) {
+		BlockPos pos = elem.getPosition();
+		var elasticProperty = this.level.getBlockProperty(pos);
+		var mass = elasticProperty.getMass();
+		
+		boolean fixed = false;
+		double[] inertia = new double[3];
+		for (ElemVertex vertex : ElemVertex.values()) {
+			BlockPos p = pos.offset(vertex.getOffset());
+			var node = this.nodeSet.getNodeAt(p);
+			fixed |= node.getDisp().equals(Vec3.ZERO);
+			var displacement = this.nodeSet.getDisplacementAt(p);
+			inertia[0] += mass * displacement.x();
+			inertia[1] += mass * displacement.y();
+			inertia[2] += mass * displacement.z();
+		}
+		
+		return new GroupResult(fixed, inertia);
+	}
+	
+	private static class GroupResult {
+		private boolean fixed = false;
+		private double[] inertia = new double[3];
+		private int depth;
+		
+		public GroupResult(boolean fixed, double[] inertia) {
+			this.fixed = fixed;
+			this.inertia = inertia;
+		}
+		
+		public static GroupResult empty() {
+			return new GroupResult(false, new double[3]);
+		}
+		
+		public GroupResult add(GroupResult other) {
+			this.fixed |= other.fixed;
+			var inertia = other.inertia;
+			this.inertia[0] += inertia[0];
+			this.inertia[1] += inertia[1];
+			this.inertia[2] += inertia[2];
+			this.depth = Math.max(this.depth, other.depth);
+			return this;
+		}
+		
+		@Override
+		public String toString() {
+			return "fix=" + this.fixed + ",in=" + this.inertia; 
+		}
+	}
 }

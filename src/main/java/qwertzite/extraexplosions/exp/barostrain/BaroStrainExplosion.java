@@ -71,10 +71,13 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				trigonals = trigonals.stream()
 						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
 						.collect(Collectors.toSet());
+				trigonals.clear(); // DEBUG prevent next step.
+//				fem.applyPressure(new BlockPos(27, 6, -1112), Direction.EAST, 4); DEBUG remove after debugging
 				fem.compute();
+				// TODO: ここから
 			}
 		});
-		DebugRenderer.addVertexDisplacement(levelCache.getDestroyeds(), fem.getNodeSet(), fem.getElementSet());
+		DebugRenderer.addVertexDisplacement(levelCache, fem.getNodeSet(), fem.getElementSet());
 		
 		this.toBlow.addAll(levelCache.getDestroyeds());
 		
@@ -342,7 +345,6 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		}
 		return hitAxis;
 	}
-	
 
 	@Override
 	public void finalizeExplosion(boolean pSpawnParticles) {

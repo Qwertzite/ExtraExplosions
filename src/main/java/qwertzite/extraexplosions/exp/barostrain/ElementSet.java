@@ -9,8 +9,6 @@ import net.minecraft.core.BlockPos;
 public class ElementSet {
 	private final Map<BlockPos, FemElement> map = new ConcurrentHashMap<>();
 	
-	
-	
 	public void markAsUpdateTarget(BlockPos elementPos) {
 		var element = this.getElementAt(elementPos);
 		element.markToBeUpdated();
@@ -22,5 +20,13 @@ public class ElementSet {
 	
 	public FemElement getElementAt(BlockPos pos) {
 		return map.computeIfAbsent(pos, k -> new FemElement(k));
+	}
+	
+	public FemElement getExistingElementAt(BlockPos pos) {
+		return map.getOrDefault(pos, null);
+	}
+	
+	public Map<BlockPos, FemElement> getElements() {
+		return this.map;
 	}
 }

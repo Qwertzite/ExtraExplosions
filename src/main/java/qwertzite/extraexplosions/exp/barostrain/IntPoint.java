@@ -29,6 +29,11 @@ public enum IntPoint {
 		}
 	}
 	
+	/**
+	 * 
+	 * @param i return the value of x_i axis
+	 * @return -1 if negative, 1 if positive
+	 */
 	public int getSign_i(int i) {
 		return this.sign[i];
 	}
