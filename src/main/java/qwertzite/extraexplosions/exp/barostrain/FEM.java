@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.phys.Vec3;
 import qwertzite.extraexplosions.util.math.EeMath;
 
 public class FEM {
@@ -99,9 +101,11 @@ public class FEM {
 		}
 		
 		System.out.println("FEM COMPLETED!"); // DEBUG
-		
+		long time = System.currentTimeMillis();
 		this.computeBlockGroup();
 		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
+		time = System.currentTimeMillis() - time;
+		System.out.println("Took " + time + " ms for clustering.");
 		
 		System.out.println("DEFORMATION!"); // DEBUG
 	}
@@ -181,7 +185,7 @@ public class FEM {
 				double hardness = elasticProperty.getHardness();
 				double resistance = elasticProperty.getResistance();
 				double g = sigma_m < 0 ? hardness / resistance : 1.0d;
-				mieses += g * sigma_m * sigma_m;
+				mieses += g * sigma_m * sigma_m * 0.1;
 				
 				// elastic deformation
 				if (mieses >= hardness || !Double.isFinite(g)) { // beyond Mieses
@@ -322,6 +326,7 @@ public class FEM {
 				summary = recursiveBlockGrouping(elem, cluster, 0);
 			} else { // this block only
 				summary = this.analyseElementStatus(elem);
+				summary.fixed = false; // force destruction
 			}
 			
 			cluster.setFixed(summary.fixed);
@@ -331,6 +336,7 @@ public class FEM {
 	
 	private GroupResult recursiveBlockGrouping(FemElement elem, BlockCluster cluster, int index) {
 		var pos = elem.getPosition();
+//		System.out.println(pos + " " + index); // DEBUG
 		GroupResult summary = this.analyseElementStatus(elem);
 		summary = Direction.stream().parallel().map(dir -> {
 			BlockPos p = pos.relative(dir);
@@ -354,7 +360,8 @@ public class FEM {
 		for (ElemVertex vertex : ElemVertex.values()) {
 			BlockPos p = pos.offset(vertex.getOffset());
 			var node = this.nodeSet.getNodeAt(p);
-			fixed |= node.getDisp().lengthSqr() < 0.000000001 * 0.000000001;
+//			fixed |= node.getDisp().lengthSqr() < 0.000000001 * 0.000000001; // FIXME: テスト中
+			fixed |= node.getDisp().equals(Vec3.ZERO);
 			var displacement = this.nodeSet.getDisplacementAt(p);
 			inertia[0] += mass * displacement.x();
 			inertia[1] += mass * displacement.y();

@@ -79,7 +79,7 @@ public class DebugRenderer {
 		pose.translate(-cameraPos.x(), -cameraPos.y(), -cameraPos.z());
 		
 		var mat = pose.last().pose();
-//		this.renderRayTrigonals(mat);
+		this.renderRayTrigonals(mat);
 		this.renderVectorMap(mat);
 		
 		
@@ -108,7 +108,7 @@ public class DebugRenderer {
 				Vec3 s0 = ray.v1().add(ray.origin());
 				Vec3 s1 = ray.v2().add(ray.origin());
 				Vec3 s2 = ray.v3().add(ray.origin());
-				float alpha = 0.4f;
+				float alpha = 0.2f;
 				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
 				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
@@ -129,18 +129,18 @@ public class DebugRenderer {
 		RenderSystem.setShader(GameRenderer::getPositionColorShader);
 		
 		bufferbuilder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-		final double scale = 1.0d / 1d;
+		final double scale = 1.0d / 100000.0d;
 		
 		synchronized (RENDER_TARGET) {
 //			for (var element : this.nodeSet.stream().map(e -> e.getPosition()).collect(Collectors.toSet())) {
 			for (var element : RENDER_TARGET) {
-				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
+//				this.renderElement(element, bufferbuilder, mat, 1.0d, e -> Vec3.ZERO, new float[] {1.0f, 1.0f, 1.0f, 1.0f}); // block boundary
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getExForce(), new float[] {0.2f, 1.0f, 0.2f, 1.0f});
-				this.renderElement(element, bufferbuilder, mat, 1.0d/16.0d, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
+//				this.renderElement(element, bufferbuilder, mat, scale, e -> e.getDisp(), new float[] {1.0f, 0.2f, 0.2f, 1.0f});
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/4.0d, e -> e.getInternalForce(), new float[] {0.4f, 0.4f, 1.0f, 1.0f});
 //				this.renderElement(element, bufferbuilder, mat, 1.0d/1.0d, e -> e.getExForce().subtract(e.getInternalForce()), new float[] {1.0f, 0.2f, 1.0f, 1.0f});
 				
-				this.renderBody(element, bufferbuilder, mat, 1.0d/16.0d);
+				this.renderBody(element, bufferbuilder, mat, scale);
 			}
 		}
 		
@@ -251,10 +251,14 @@ public class DebugRenderer {
 		for (int i = 0; i < IntPoint.values().length; i++) {
 			var intp = IntPoint.values()[i];
 			var offs = element.getDisplacementAt(intp);
+//			poss[i] = new Vec3(
+//					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
+//					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
+//					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
 			poss[i] = new Vec3(
-					cx + intp.getXi_i(0)/2.0d + offs[0]*scale,
-					cy + intp.getXi_i(1)/2.0d + offs[1]*scale,
-					cz + intp.getXi_i(2)/2.0d + offs[2]*scale);
+					cx + intp.getSign_i(0)/2.0d + offs[0]*scale,
+					cy + intp.getSign_i(1)/2.0d + offs[1]*scale,
+					cz + intp.getSign_i(2)/2.0d + offs[2]*scale);
 		}
 		
 		int i = 0;
