@@ -117,6 +117,7 @@ public class BarostrainLevelCache extends LevelCache<qwertzite.extraexplosions.e
 		
 		public double getSigmaYield() { return this.hardness; }
 		
-		public double getMass() { return this.resistance / ((this.hardness + 1.0f) * 16); }
+		public double getMass() { return this.resistance / 12; }
+//		public double getMass() { return this.resistance / ((this.hardness + 1.0f) * 16); }
 	}
 }

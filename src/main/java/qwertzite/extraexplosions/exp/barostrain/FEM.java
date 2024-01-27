@@ -1,5 +1,6 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,34 +82,38 @@ public class FEM {
 				}).count(); // number of nodes to be updated.
 		System.out.println("count=" + count);
 		
-		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
+		long time = System.nanoTime();
 		while (count > 0 && iter < 10000) {
-			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
+			this.elementSet.stream().parallel().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
-				tmpDestroyed.add(e.getPosition());
 			});
-			count = this.nodeSet.stream()
+			count = this.nodeSet.stream().parallel()
 					.filter(e -> {
-						this.computeInternalForce(e); // 前のループでの
+						if (!e.needsIntForceUpdate()) return false;
+						this.computeInternalForce(e);
 						
 						if (!this.isForceImbalanceAt(e)) return false;
 						this.computeNextDisplacement(e);
-						this.markAdjacentElements(e); // ここまで確認
+						this.markAdjacentElements(e);
 						return true;
 					}).count();
-			System.out.println("iter=" + iter++ + ", count2=" + count);
-			
+			iter++;
+//			System.out.println("iter=" + iter + ", count2=" + count);
 		}
 		
-		System.out.println("FEM COMPLETED!"); // DEBUG
-		long time = System.nanoTime();
+		System.out.println("FEM COMPLETED! in %d ms, iter=%d".formatted((System.nanoTime() - time) / 1000_000, iter)); // DEBUG
 		this.computeBlockGroup();
 		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
-		time = System.nanoTime() - time;
-		System.out.println("Took " + time + " ns for clustering.");
 		
-		System.out.println("DEFORMATION!"); // DEBUG
+		System.out.println("DESTRUCTION!"); // DEBUG
+		
+		this.nodeSet.filterNodes(this::prepareNodes);
+
+		// 要素：破壊後のクリア操作を行う (応力などのキャッシュ)
+		
+		System.out.println("RESDY FOR NEXT STEP"); // DEBUG
+		
 	}
 	
 	private boolean filterExternalForceUpdated(FemNode node) {
@@ -120,8 +125,8 @@ public class FEM {
 		double norm = node.getForceBalanceNormSquared();
 		for (BlockPos adj : node.getAdjacentElements()) {
 			var prop = this.level.getBlockProperty(adj);
-			var limit = prop.getHardness() / 16;
-			if (norm > limit*limit && norm > 0.05*0.05 && limit > 0) return true;
+			var limit = prop.getMass() / 4;
+			if (norm > limit*limit && limit > 0.001) return true;
 		}
 		return false;
 	}
@@ -129,7 +134,8 @@ public class FEM {
 	private void markAdjacentElements(FemNode node) {
 		var pos = node.getPosition();
 		for (var adj : FemNode.getAdjacentElementOffsets()) {
-			this.elementSet.markAsUpdateTarget(pos.offset(adj));
+			var p = pos.offset(adj);
+			if (!this.level.isCurrentlyAirAt(p)) this.elementSet.markAsUpdateTarget(p);
 		}
 	}
 	
@@ -216,18 +222,16 @@ public class FEM {
 	private void computeInternalForce(FemNode node) {
 		BlockPos nodePosition = node.getPosition();
 		var nodeDisplacement = node.getDisp();
-		
 		var intForce = new double[3];
 		for (var elementOffset : NeighbourElement.values()) {
 			
 			var elementPosition = nodePosition.offset(elementOffset.getOffset());
-			var element = this.elementSet.getElementAt(elementPosition);
 			var elasticProperty = this.level.getBlockProperty(elementPosition);
 			var mass = elasticProperty.getMass();
 			
 			for (var intPt : IntPoint.values()) {
 				
-				double[][] sigma = element.getSigmaAt(intPt);
+				double[][] sigma = elementSet.getStrainAt(elementPosition, intPt);
 				
 				double[] partial = new double[3]; // partial_j
 				partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
@@ -254,6 +258,41 @@ public class FEM {
 		node.setInternalForce(intForce[0], intForce[1], intForce[2]);
 	}
 	
+	private void computeInternalForceFromElement(FemNode node, NeighbourElement elementOffset, double[] intForce) {
+		BlockPos nodePosition = node.getPosition();
+		var nodeDisplacement = node.getDisp();
+		
+		var elementPosition = nodePosition.offset(elementOffset.getOffset());
+		var elasticProperty = this.level.getBlockProperty(elementPosition);
+		var mass = elasticProperty.getMass();
+		
+		for (var intPt : IntPoint.values()) {
+			
+			double[][] sigma = elementSet.getStrainAt(elementPosition, intPt);
+			
+			double[] partial = new double[3]; // partial_j
+			partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
+			partial[1] = ShapeFunc.partial(elementOffset.getNodeVertex(), 1, intPt);
+			partial[2] = ShapeFunc.partial(elementOffset.getNodeVertex(), 2, intPt);
+			
+			// elastic component
+			for (int j = 0; j < 3; j++) {
+				var del = partial[j];
+				intForce[0] += sigma[j][0] * del;
+				intForce[1] += sigma[j][1] * del;
+				intForce[2] += sigma[j][2] * del;
+			}
+			intForce[0] += sigma[0][0] * partial[0];
+			intForce[1] += sigma[1][1] * partial[1];
+			intForce[2] += sigma[2][2] * partial[2];
+			
+		}
+		// inertial component
+		intForce[0] += mass * nodeDisplacement.x();
+		intForce[1] += mass * nodeDisplacement.y();
+		intForce[2] += mass * nodeDisplacement.z();
+	}
+	
 	private FemNode computeInitialDisplacement(FemNode node) {
 		BlockPos pos0 = node.getPosition();
 		
@@ -278,7 +317,7 @@ public class FEM {
 		double dx = invJacobian[0][0] * node.getExForceX() + invJacobian[0][1] * node.getExForceY() + invJacobian[0][2] * node.getExForceZ();
 		double dy = invJacobian[1][0] * node.getExForceX() + invJacobian[1][1] * node.getExForceY() + invJacobian[1][2] * node.getExForceZ();
 		double dz = invJacobian[2][0] * node.getExForceX() + invJacobian[2][1] * node.getExForceY() + invJacobian[2][2] * node.getExForceZ();
-		node.setDisplacement(dx, dy, dz, 1.0d);
+		node.addDisplacement(dx, dy, dz, 1.0d);
 		return node;
 	}
 	
@@ -317,12 +356,12 @@ public class FEM {
 	// ======== destruction ========
 	
 	private void computeBlockGroup() {
+		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearClusterStatus);
 		this.elementSet.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
 		.forEach(elem -> {
 			if (elem.belongToCluster()) return;
 			BlockCluster cluster = new BlockCluster();
 			if(!elem.setCluster(cluster)) return; // already added to a group
-			
 			GroupResult summary;
 			if (!elem.isElasticallyDeforming()) {
 				ConcurrentLinkedQueue<FemElement> queue = new ConcurrentLinkedQueue<>();
@@ -405,5 +444,31 @@ public class FEM {
 		public String toString() {
 			return "fix=" + this.fixed + ",in=" + this.inertia; 
 		}
+	}
+	
+	// ======== prepare for next ray trace iteration ========
+	
+	private boolean prepareNodes(FemNode node) {
+		/* Check elements adjacent to each nodes.
+		 * Subtract internal force imposed by distracted element and add compensating external force.
+		 * Node fill be removed if all the surrounding elements are to be destroyed.
+		 * Solver status will be cleared from all the nodes.
+		 */
+		BlockPos pos = node.getPosition();
+		
+		boolean remove = true;
+		double[] intForce = new double[3];
+		for (var elementOffset : NeighbourElement.values()) {
+			var p = pos.offset(elementOffset.getOffset());
+			if (elementSet.isTobeDestroyed(p)) {
+				this.computeInternalForceFromElement(node, elementOffset, intForce);
+			} else {
+				remove = false;
+			}
+		}
+		node.addExternalForce(-intForce[0], -intForce[1], -intForce[2]);
+		node.addInternalForce(-intForce[0], -intForce[1], -intForce[2]);
+		node.prepareForNextRayStep();
+		return remove; // returning true will remove the node.
 	}
 }

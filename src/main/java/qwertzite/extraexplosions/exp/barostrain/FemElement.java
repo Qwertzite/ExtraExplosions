@@ -5,6 +5,12 @@ import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 
 public class FemElement {
+	public static final FemElement ZERO = new FemElement(BlockPos.ZERO) {
+		@Override public void markToBeUpdated() { throw new UnsupportedOperationException("This object is immutable."); }
+		@Override public void setElasticDeformed(IntPoint intPoint) {  throw new UnsupportedOperationException("This object is immutable."); }
+		@Override public void setNewStatus(double[][] displacement, double[][][] sigma) { throw new UnsupportedOperationException("This object is immutable."); }
+		@Override public synchronized boolean setCluster(BlockCluster cluster) { throw new UnsupportedOperationException("This object is immutable."); }
+	};
 
 	private final BlockPos position;
 	
@@ -68,5 +74,18 @@ public class FemElement {
 	
 	public boolean isFixed() {
 		return this.cluster.isFixed();
+	}
+	
+	// ======== For next FEM computation ========
+	
+	public void clearDestructedElement() {
+		this.displacement = new double[3][3];
+		this.sigma = new double[3][3][3];
+		this.elasticDeformation.clear();
+		this.cluster = null;
+	}
+	
+	public void clearClusterStatus() {
+		this.cluster = null;
 	}
 }
