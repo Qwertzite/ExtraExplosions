@@ -3,6 +3,7 @@ package qwertzite.extraexplosions.exp.barostrain;
 import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction.Axis;
 
 public class FemElement {
 	public static final FemElement ZERO = new FemElement(BlockPos.ZERO) {
@@ -13,6 +14,13 @@ public class FemElement {
 	};
 
 	private final BlockPos position;
+	
+	public double pressForceXPos;
+	public double pressForceXNeg;
+	public double pressForceYPos;
+	public double pressForceYNeg;
+	public double pressForceZPos;
+	public double pressForceZNeg;
 	
 	private double[][] displacement = new double[IntPoint.values().length][3];
 	private double[][][] sigma = new double[IntPoint.values().length][3][3];
@@ -28,6 +36,15 @@ public class FemElement {
 	
 	public BlockPos getPosition() { return this.position; }
 	
+	public void addPressureForce(Axis axis, double force) {
+		switch (axis) {
+		case X -> { if (force > 0) { this.pressForceXPos += force; } else { this.pressForceXNeg += force; } }
+		case Y -> { if (force > 0) { this.pressForceYPos += force; } else { this.pressForceYNeg += force; } }
+		case Z -> { if (force > 0) { this.pressForceZPos += force; } else { this.pressForceZNeg += force; } }
+		default -> { assert(false); }
+		}
+	}
+	
 	public void markToBeUpdated() {
 		this.needUpdate = true;
 	}
@@ -37,6 +54,7 @@ public class FemElement {
 	public void setElasticDeformed(IntPoint intPoint) {
 		this.elasticDeformation.add(intPoint);
 	}
+	
 	public void setNewStatus(double[][] displacement, double[][][] sigma) {
 		this.needUpdate = false;
 		this.displacement = displacement;
@@ -85,7 +103,13 @@ public class FemElement {
 		this.cluster = null;
 	}
 	
-	public void clearClusterStatus() {
+	public void clearElementStatus() {
 		this.cluster = null;
+		this.pressForceXNeg = 0.0d;
+		this.pressForceXPos = 0.0d;
+		this.pressForceYNeg = 0.0d;
+		this.pressForceYPos = 0.0d;
+		this.pressForceZNeg = 0.0d;
+		this.pressForceZPos = 0.0d;
 	}
 }

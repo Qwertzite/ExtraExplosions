@@ -2,7 +2,10 @@ package qwertzite.extraexplosions.exp.barostrain;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -58,6 +61,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		var levelCache = new BarostrainLevelCache(level, this);
 		
 		FEM fem = new FEM(levelCache);
+		
+		var hitRays = new ConcurrentHashMap<PressureRay, PressureTraceResult>();
 		LevelCache.execute(levelCache, () -> {
 			Set<PressureRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
 					.parallel()
@@ -67,14 +72,21 @@ public class BaroStrainExplosion extends EeExplosionBase {
 					.collect(Collectors.toSet());
 			
 			while (!trigonals.isEmpty()) {
-				DebugRenderer.addRays(trigonals.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
-				trigonals = trigonals.stream()
-						.flatMap(ray -> this.rayTraceStep(ray, fem, levelCache))
-						.collect(Collectors.toSet());
-//				trigonals.clear(); // DEBUG prevent next step.
-//				fem.applyPressure(new BlockPos(10, 6, 10), Direction.UP, 4); // DEBUG remove after debugging
+				
+				// ray tracing till all the rays hit a block or diminish.
+				ConcurrentLinkedQueue<PressureRay> queue = new ConcurrentLinkedQueue<>();
+				queue.addAll(trigonals);
+				while (!queue.isEmpty()) {
+					Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull)
+					.forEach(ray -> this.rayTraceStep(ray, fem, levelCache, hitRays).forEach(queue::offer));
+				}
+				trigonals.clear();
+				
 				fem.compute();
-				// TODO: ここから
+				
+				// reflected or transmitted rays.
+				// TODO: ここから hitRays -> entries
+				
 			}
 		});
 		DebugRenderer.addVertexDisplacement(levelCache, fem.getNodeSet(), fem.getElementSet());
@@ -84,8 +96,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		System.out.println("boom! A");
 	}
 	
-	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess) {
-//	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, CachedLevelAccessWrapper levelAccess) {
+	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess, ConcurrentHashMap<PressureRay, PressureTraceResult> hitRays) {
 		var from = ray.trigonal().from();
 		var to = ray.trigonal().to();
 		
@@ -103,7 +114,10 @@ public class BaroStrainExplosion extends EeExplosionBase {
 			double distance = from.distanceTo(traceResult.hitPos());
 			double pressure = ray.computePressureAt(distance) * (internal ? -1 : 1);
 			
-			fem.applyPressure(traceResult.hitBlock(), traceResult.hitFace(), pressure);
+			if (pressure > 0.0d) {
+				fem.applyPressure(traceResult.hitBlock(), traceResult.hitFace(), pressure);
+				hitRays.put(ray, traceResult);
+			}
 			
 			return Stream.empty(); // TODO: reflected rays and transmitted rays
 		}
@@ -118,7 +132,6 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	}
 	
 	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
-//	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
 		double dirZ = to.z - from.z;
@@ -161,7 +174,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		switch (hitAxis) {
 		case X:
 			len = lenX;
-			hitFace = !dSignXPosv ? Direction.WEST : Direction.EAST;
+			hitFace = !dSignXPosv ? Direction.WEST : Direction.EAST; // +x: east, -x: west
 			break;
 		case Y:
 			len = lenY;
@@ -169,7 +182,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 			break;
 		case Z:
 			len = lenZ;
-			hitFace = !dSignZPosv ? Direction.NORTH : Direction.SOUTH;
+			hitFace = !dSignZPosv ? Direction.NORTH : Direction.SOUTH; // +z: south, -z: north
 			break;
 		default:
 			assert(false);
@@ -193,7 +206,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 					normDirX, normDirY, normDirZ);
 			ModLog.warn("from=%s, to=%s", from, to);
 			ModLog.warn("hitAxis=%s", hitAxis);
-			throw new RuntimeException("This should not happen!");
+			throw new RuntimeException("This is not supposed to happen!");
 		}
 		double distToEnd =
 				(to.x() - currentX) * normDirX +
@@ -215,7 +228,6 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	 * @return
 	 */
 	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
-//	private PressureTraceResult pressureTrace(Vec3 from, Vec3 to, CachedLevelAccessWrapper levelAccess) {
 		double dirX = to.x - from.x;
 		double dirY = to.y - from.y;
 		double dirZ = to.z - from.z;

@@ -1,9 +1,6 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
-import java.util.Collections;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Stream;
 
@@ -25,6 +22,12 @@ public class FEM {
 		this.level = level;
 	}
 	
+	/**
+	 * Applies pressure to a target block.
+	 * @param pos Position of a block on which pressure was applied.
+	 * @param face The face of the block on which pressure was applied.
+	 * @param pressure Positive pressure means that the face was compressed and vice versa.
+	 */
 	public void applyPressure(BlockPos pos, Direction face, double pressure) {
 		switch (face) {
 		case EAST: // +x
@@ -67,11 +70,13 @@ public class FEM {
 			break;
 		}
 		
-		// どの面に当たったかを記録する (BlockPos x Directionからなるキー)
+		// imposes force toward negative direction when pressure is applied on the positive face of a block.
+		elementSet.getElementAt(pos).addPressureForce(face.getAxis(), - face.getAxisDirection().getStep() * pressure);
 	}
 	
 	public void compute() {
 		System.out.println("BEGIN FEM!"); // DEBUG
+		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearElementStatus);
 		
 		long count = this.nodeSet.stream() // OPTIMISE: parallel
 				.filter(e -> {
@@ -109,10 +114,8 @@ public class FEM {
 		System.out.println("DESTRUCTION!"); // DEBUG
 		
 		this.nodeSet.filterNodes(this::prepareNodes);
-
-		// 要素：破壊後のクリア操作を行う (応力などのキャッシュ)
 		
-		System.out.println("RESDY FOR NEXT STEP"); // DEBUG
+		System.out.println("READY FOR NEXT STEP"); // DEBUG
 		
 	}
 	
@@ -125,10 +128,15 @@ public class FEM {
 		double norm = node.getForceBalanceNormSquared();
 		for (BlockPos adj : node.getAdjacentElements()) {
 			var prop = this.level.getBlockProperty(adj);
-			var limit = prop.getMass() / 4;
-			if (norm > limit*limit && limit > 0.001) return true;
+			var mass = prop.getMass();
+			var limit = mass / 4;
+			if (norm > limit*limit && this.isResistiveBlock(mass)) return true;
 		}
 		return false;
+	}
+	
+	private boolean isResistiveBlock(double mass) {
+		return mass > 0.004;
 	}
 	
 	private void markAdjacentElements(FemNode node) {
@@ -356,7 +364,6 @@ public class FEM {
 	// ======== destruction ========
 	
 	private void computeBlockGroup() {
-		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearClusterStatus);
 		this.elementSet.getElements().values().stream() // DO NOT MAKE THIS STREAM PARALLEL
 		.forEach(elem -> {
 			if (elem.belongToCluster()) return;
@@ -368,7 +375,6 @@ public class FEM {
 				queue.add(elem); // the first element
 				summary = GroupResult.empty();
 				while (!queue.isEmpty()) {
-					queue.spliterator();
 					summary = Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull) // poll elements till the queue is empty
 							.map(e -> this.searchBlockGrouping(e, cluster, queue))
 							.reduce(summary, (s1, s2) -> s1.add(s2));
@@ -412,31 +418,55 @@ public class FEM {
 			inertia[1] += mass * displacement.y();
 			inertia[2] += mass * displacement.z();
 		}
-		
-		return new GroupResult(fixed, inertia);
+		return new GroupResult(fixed, this.isResistiveBlock(mass), inertia,
+				elem.pressForceXNeg, elem.pressForceXPos,
+				elem.pressForceYNeg, elem.pressForceYPos,
+				elem.pressForceZNeg, elem.pressForceZPos);
 	}
 	
 	private static class GroupResult {
 		private boolean fixed = false;
+		private boolean resistive = false; // can reflect blast. (i.e. has non-zero mass)
 		private double[] inertia = new double[3];
 		private int depth;
+		private double extForceXPos;
+		private double extForceXNeg;
+		private double extForceYPos;
+		private double extForceYNeg;
+		private double extForceZPos;
+		private double extForceZNeg;
 		
-		public GroupResult(boolean fixed, double[] inertia) {
+		public GroupResult(boolean fixed, boolean resistive, double[] inertia,
+				double xn, double xp, double yn, double yp, double zn, double zp) {
 			this.fixed = fixed;
 			this.inertia = inertia;
+			this.resistive = resistive;
+			this.extForceXNeg = xn;
+			this.extForceXPos = xp;
+			this.extForceYNeg = yn;
+			this.extForceYPos = yp;
+			this.extForceZNeg = zn;
+			this.extForceZPos = zp;
 		}
 		
 		public static GroupResult empty() {
-			return new GroupResult(false, new double[3]);
+			return new GroupResult(false, false, new double[3], 0, 0, 0, 0, 0, 0);
 		}
 		
 		public GroupResult add(GroupResult other) {
 			this.fixed |= other.fixed;
+			this.resistive |= other.resistive;
 			var inertia = other.inertia;
 			this.inertia[0] += inertia[0];
 			this.inertia[1] += inertia[1];
 			this.inertia[2] += inertia[2];
 			this.depth = Math.max(this.depth, other.depth);
+			this.extForceXNeg += other.extForceXNeg;
+			this.extForceXPos += other.extForceXPos;
+			this.extForceYNeg += other.extForceYNeg;
+			this.extForceYPos += other.extForceYPos;
+			this.extForceZNeg += other.extForceZNeg;
+			this.extForceZPos += other.extForceZPos;
 			return this;
 		}
 		
