@@ -40,6 +40,8 @@ public class DebugRenderer {
 	public static void clear() {
 		synchronized (RAY_TRIAGONALS) {
 			RAY_TRIAGONALS.clear();
+		}
+		synchronized (RENDER_TARGET) {
 			RENDER_TARGET.clear();
 		}
 	}

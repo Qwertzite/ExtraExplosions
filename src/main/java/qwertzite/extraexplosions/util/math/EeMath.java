@@ -3,6 +3,8 @@ package qwertzite.extraexplosions.util.math;
 import java.util.Random;
 
 import net.minecraft.core.Vec3i;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 
 public class EeMath {
@@ -141,5 +143,29 @@ public class EeMath {
 		inv[2][2] = (mat[0][0] * mat[1][1] - mat[0][1]*mat[1][0]) / det;
 		
 		return inv;
+	}
+	
+	public static int randomRound(double value, Random rand) {
+		int floor = Mth.floor(value);
+		double remain = value - floor;
+		return floor + (remain > rand.nextDouble() ? 1 : 0);
+	}
+	
+	public static int randomRound(float value, Random rand) {
+		int floor = Mth.floor(value);
+		float remain = value - floor;
+		return floor + (remain > rand.nextFloat() ? 1 : 0);
+	}
+	
+	public static int randomRound(double value, RandomSource rand) {
+		int floor = Mth.floor(value);
+		double remain = value - floor;
+		return floor + (remain > rand.nextDouble() ? 1 : 0);
+	}
+	
+	public static int randomRound(float value, RandomSource rand) {
+		int floor = Mth.floor(value);
+		float remain = value - floor;
+		return floor + (remain > rand.nextFloat() ? 1 : 0);
 	}
 }
