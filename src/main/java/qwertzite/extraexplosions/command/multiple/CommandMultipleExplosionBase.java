@@ -46,7 +46,7 @@ public abstract class CommandMultipleExplosionBase {
 	private CommandArgument<Float> height = CommandArgument.floatArg("height")
 			.setDefaultValue(ctx -> 0.0f)
 			.setDescription("Height from the surface.");
-	private CommandArgument<Float> spread = CommandArgument.floatArg("spread", 0)
+	private CommandArgument<Float> density = CommandArgument.floatArg("density", 0)
 			.setDefaultValue(ctx -> 0.01f)
 			.setDescription("Explosions per square block.");
 	private CommandArgument<Float> explosionInterval = CommandArgument.floatArg("interval", 0)
@@ -55,6 +55,9 @@ public abstract class CommandMultipleExplosionBase {
 	protected CommandArgument<Float> intencity = CommandArgument.floatArg("intencity", 0)
 			.setDefaultValue(ctx -> 4.0f)
 			.setDescription("Intencity of explosion");
+	protected CommandArgument<Boolean> signleExplosion = CommandArgument.flag("single")
+			.setDefaultValue(ctx -> false)
+			.setDescription("Ignore density and cause one explosion only.");
 	
 	/**
 	 * add additional arguments and set usage string.
@@ -64,20 +67,20 @@ public abstract class CommandMultipleExplosionBase {
 	protected CommandRegister baseInit(String explosionTypeName) {
 		
 		return CommandRegister.$("bombard", explosionTypeName, ctx -> {
-			var x1 = this.posX1.getValue();
-			var z1 = this.posZ1.getValue();
-			var x2 = this.posX2.getValue();
-			var z2 = this.posZ2.getValue();
-			var height = this.height.getValue();
-			
-			var spread = this.spread.getValue();
-			var rate = this.explosionInterval.getValue();
+			double x1 = this.posX1.getValue();
+			double z1 = this.posZ1.getValue();
+			double x2 = this.posX2.getValue();
+			double z2 = this.posZ2.getValue();
+			float height = this.height.getValue();
+			float spread = this.density.getValue();
+			float rate = this.explosionInterval.getValue();
+			boolean single = this.signleExplosion.getValue();
 			
 			var level = ctx.getSource().getLevel();
 			
 			var explosion = this.explosionProvider(ctx);
 			var bb = new AABB(x1, height, z1, x2, height, z2);
-			var count = EeMath.randomRound(spread * bb.getXsize() * bb.getZsize(), level.getRandom());
+			var count = single ? 1 : EeMath.randomRound(spread * bb.getXsize() * bb.getZsize(), level.getRandom());
 			
 			ENTRIES.add(new Entry(level, count, explosion, bb, rate));
 			
@@ -86,8 +89,9 @@ public abstract class CommandMultipleExplosionBase {
 		})
 				.addPositionalArguments(posX1).addPositionalArguments(posZ1)
 				.addPositionalArguments(posX2).addPositionalArguments(posZ2)
-				.addPositionalArguments(height).addPositionalArguments(spread).addPositionalArguments(explosionInterval)
-				.addPositionalArguments(intencity).setPermissionLevel(3);
+				.addPositionalArguments(height).addPositionalArguments(density).addPositionalArguments(explosionInterval)
+				.addPositionalArguments(intencity)
+				.addOption(signleExplosion).setPermissionLevel(3);
 	}
 	
 	protected abstract Consumer<Vec3> explosionProvider(CommandContext<CommandSourceStack> context);
@@ -123,8 +127,7 @@ public abstract class CommandMultipleExplosionBase {
 		 * @return true if completed
 		 */
 		public boolean tick() {
-			this.timer += rate;
-			for (;this.timer >= 1.0f; timer -= 1.0f) {
+			for (;this.timer >= 0.0f; timer -= 1.0f) {
 				if (this.count-- <= 0) {
 					ModLog.info("Finished causing explosions.");
 					return true;
@@ -142,6 +145,7 @@ public abstract class CommandMultipleExplosionBase {
 					return true;
 				}
 			}
+			this.timer += rate;
 			return false;
 		}
 	}

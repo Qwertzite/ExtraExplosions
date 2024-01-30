@@ -66,29 +66,24 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		
 		var hitRays = new ConcurrentHashMap<PressureRay, PressureTraceResult>();
 		LevelCache.execute(levelCache, () -> {
-			Set<PressureRay> trigonals = Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
-					.parallel()
-					.map(ray -> { 
-						return new PressureRay(ray, this.radius, division);
-					})
-					.collect(Collectors.toSet());
 			
-			while (!trigonals.isEmpty()) {
-				
+			ConcurrentLinkedQueue<PressureRay> queue = new ConcurrentLinkedQueue<>();
+			Stream.of(RayTrigonal.createInitialSphere(this.getPosition(), /* init radius */ 4.2d, /* division step */ 3, this.random))
+					.parallel()
+					.forEach(ray -> queue.add(new PressureRay(ray, this.radius, division)));
+			
+			while (!queue.isEmpty()) {
 				// ray tracing till all the rays hit a block or diminish.
-				ConcurrentLinkedQueue<PressureRay> queue = new ConcurrentLinkedQueue<>();
-				queue.addAll(trigonals);
 				while (!queue.isEmpty()) {
 					Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull)
 					.forEach(ray -> this.rayTraceStep(ray, fem, levelCache, hitRays).forEach(queue::offer));
 				}
-				trigonals.clear();
 				
-				fem.compute();
+				fem.compute(); // FEM computation
 				
 				// reflected or transmitted rays.
+				hitRays.entrySet().parallelStream().forEach(e -> {});
 				// TODO: ここから hitRays -> entries
-				
 			}
 		});
 		DebugRenderer.addVertexDisplacement(levelCache, fem.getNodeSet(), fem.getElementSet());
