@@ -9,7 +9,7 @@ import net.minecraft.world.phys.Vec3;
  * @author Qwertzite
  * @date 2023/12/23
  */
-public class FemNode implements IForceAccumlator {
+public class FemNode {
 	
 	private final BlockPos position;
 	private final BlockPos[] neighourVertex;
@@ -80,7 +80,6 @@ public class FemNode implements IForceAccumlator {
 		
 	}
 	
-	@Override
 	public void addExternalForce(double fx, double fy, double fz) {
 		this.externalForceX += fx;
 		this.externalForceY += fy;
@@ -158,6 +157,14 @@ public class FemNode implements IForceAccumlator {
 		this.internalForceX = x;
 		this.internalForceY = y;
 		this.internalForceZ = z;
+		this.needComputeInternalForce = false;
+	}
+	
+	public void addInternalForce(double x, double y, double z) {
+		this.internalForce = this.internalForce.add(x, y, z);
+		this.internalForceX += x;
+		this.internalForceY += y;
+		this.internalForceZ += z;
 	}
 	
 	public Vec3 getInternalForce() { return this.internalForce; }
@@ -174,4 +181,9 @@ public class FemNode implements IForceAccumlator {
 	public double getForceBalanceY() { return this.externalForceY - this.internalForceY; }
 	public double getForceBalanceZ() { return this.externalForceZ - this.internalForceZ; }
 	
+	public void prepareForNextRayStep() {
+		this.prevDispX = this.dispX;
+		this.prevDispY = this.dispY;
+		this.prevDispZ = this.dispZ;
+	}
 }

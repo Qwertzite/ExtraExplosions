@@ -2,7 +2,10 @@ package qwertzite.extraexplosions.util.math;
 
 import java.util.Random;
 
+import net.minecraft.core.Direction.Axis;
 import net.minecraft.core.Vec3i;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 
 public class EeMath {
@@ -117,6 +120,26 @@ public class EeMath {
 		};
 	}
 	
+	public static Vec3 invertAxis(Vec3 vec, Axis axis) {
+		return switch (axis) {
+		case X -> new Vec3(-vec.x(), vec.y(), vec.z());
+		case Y -> new Vec3( vec.x(),-vec.y(), vec.z());
+		case Z -> new Vec3( vec.x(), vec.y(),-vec.z());
+		};
+	}
+	
+	public static Vec3 invertAxis(Vec3 vec, Axis axis, Vec3 at) {
+		return switch (axis) {
+		case X -> new Vec3(invert(vec.x(), at.x()),                vec.y(),                vec.z());
+		case Y -> new Vec3(                vec.x(),invert(vec.y(), at.y()),                vec.z());
+		case Z -> new Vec3(                vec.x(),                vec.y(),invert(vec.z(), at.z()));
+		};
+	}
+	
+	private static double invert(double value, double coord) {
+		return coord + coord - value;
+	}
+	
 	public static double[][] inverseMatrix(double[][] mat) {
 		double det= 
 				mat[0][0] * mat[1][1] * mat[2][2] +
@@ -141,5 +164,29 @@ public class EeMath {
 		inv[2][2] = (mat[0][0] * mat[1][1] - mat[0][1]*mat[1][0]) / det;
 		
 		return inv;
+	}
+	
+	public static int randomRound(double value, Random rand) {
+		int floor = Mth.floor(value);
+		double remain = value - floor;
+		return floor + (remain > rand.nextDouble() ? 1 : 0);
+	}
+	
+	public static int randomRound(float value, Random rand) {
+		int floor = Mth.floor(value);
+		float remain = value - floor;
+		return floor + (remain > rand.nextFloat() ? 1 : 0);
+	}
+	
+	public static int randomRound(double value, RandomSource rand) {
+		int floor = Mth.floor(value);
+		double remain = value - floor;
+		return floor + (remain > rand.nextDouble() ? 1 : 0);
+	}
+	
+	public static int randomRound(float value, RandomSource rand) {
+		int floor = Mth.floor(value);
+		float remain = value - floor;
+		return floor + (remain > rand.nextFloat() ? 1 : 0);
 	}
 }

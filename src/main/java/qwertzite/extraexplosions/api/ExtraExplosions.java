@@ -107,8 +107,10 @@ public class ExtraExplosions {
 		boolean remote = world.isClientSide();
 		var explosion = new BaroStrainExplosion(world, entity, x, y, z, strength, interaction);
 		if (net.minecraftforge.event.ForgeEventFactory.onExplosionStart(world, explosion)) { return explosion; }
+		Long timeMillis = System.currentTimeMillis();
 		explosion.explode();
 		explosion.finalizeExplosion(remote);
+		ModLog.info("Caused baro-strain explosion, took %d ms.", System.currentTimeMillis() - timeMillis);
 		
 		if (!remote) {
 			ServerLevel level = (ServerLevel) world;

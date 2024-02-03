@@ -4,6 +4,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import com.mojang.brigadier.arguments.ArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -60,6 +61,21 @@ public class CommandArgument<T> {
 	public static CommandArgument<Long> longArg(String name) {
 		return new CommandArgument<>(name, "long", (cbc) -> LongArgumentType.longArg(),
 				LongArgumentType::getLong);
+	}
+
+	public static CommandArgument<Double> doubleArg(String name) {
+		return new CommandArgument<>(name, "double", (cbc) -> DoubleArgumentType.doubleArg(),
+				DoubleArgumentType::getDouble);
+	}
+	
+	public static CommandArgument<Double> doubleArg(String name, float minValue) {
+		return new CommandArgument<>(name, "double", (cbc) -> DoubleArgumentType.doubleArg(minValue),
+				DoubleArgumentType::getDouble);
+	}
+	
+	public static CommandArgument<Float> floatArg(String name) {
+		return new CommandArgument<>(name, "float", (cbc) -> FloatArgumentType.floatArg(),
+				FloatArgumentType::getFloat);
 	}
 	
 	public static CommandArgument<Float> floatArg(String name, float minValue) {

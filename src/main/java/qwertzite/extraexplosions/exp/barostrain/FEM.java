@@ -1,14 +1,13 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
+import qwertzite.extraexplosions.exp.barostrain.BlockCluster.GroupResult;
 import qwertzite.extraexplosions.util.math.EeMath;
 
 public class FEM {
@@ -24,6 +23,17 @@ public class FEM {
 		this.level = level;
 	}
 	
+	public void prepare() {
+		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearElementStatus);
+		// element status must be preserved when FEM#compute is completed to calculate destruction.
+	}
+	
+	/**
+	 * Applies pressure to a target block.
+	 * @param pos Position of a block on which pressure was applied.
+	 * @param face The face of the block on which pressure was applied.
+	 * @param pressure Positive pressure means that the face was compressed and vice versa.
+	 */
 	public void applyPressure(BlockPos pos, Direction face, double pressure) {
 		switch (face) {
 		case EAST: // +x
@@ -66,13 +76,14 @@ public class FEM {
 			break;
 		}
 		
-		// どの面に当たったかを記録する (BlockPos x Directionからなるキー)
+		// imposes force toward negative direction when pressure is applied on the positive face of a block.
+		elementSet.getElementAt(pos).addPressureForce(face.getAxis(), - face.getAxisDirection().getStep() * pressure * 4);
 	}
 	
 	public void compute() {
 		System.out.println("BEGIN FEM!"); // DEBUG
 		
-		long count = this.nodeSet.stream() // OPTIMISE: parallel
+		long count = this.nodeSet.stream().parallel() // OPTIMISE: parallel
 				.filter(e -> {
 					if (!this.filterExternalForceUpdated(e) || !this.isForceImbalanceAt(e)) return false;
 					this.markAdjacentElements(e);
@@ -81,34 +92,36 @@ public class FEM {
 				}).count(); // number of nodes to be updated.
 		System.out.println("count=" + count);
 		
-		Set<BlockPos> tmpDestroyed = ConcurrentHashMap.newKeySet();
 		int iter = 0;
+		long time = System.nanoTime();
 		while (count > 0 && iter < 10000) {
-			this.elementSet.stream().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
+			this.elementSet.stream().parallel().filter(e -> e.needsUpdate()).forEach(e -> { // OPTIMISE: parallel
 				this.computeElement(e);
-				tmpDestroyed.add(e.getPosition());
 			});
-			count = this.nodeSet.stream()
+			count = this.nodeSet.stream().parallel()
 					.filter(e -> {
-						this.computeInternalForce(e); // 前のループでの
+						if (!e.needsIntForceUpdate()) return false;
+						this.computeInternalForce(e);
 						
 						if (!this.isForceImbalanceAt(e)) return false;
 						this.computeNextDisplacement(e);
-						this.markAdjacentElements(e); // ここまで確認
+						this.markAdjacentElements(e);
 						return true;
 					}).count();
-			System.out.println("iter=" + iter++ + ", count2=" + count);
-			
+			iter++;
+//			System.out.println("iter=" + iter + ", count2=" + count);
 		}
 		
-		System.out.println("FEM COMPLETED!"); // DEBUG
-		long time = System.nanoTime();
+		System.out.println("FEM COMPLETED! in %d ms, iter=%d".formatted((System.nanoTime() - time) / 1000_000, iter)); // DEBUG
 		this.computeBlockGroup();
 		this.elementSet.stream().parallel().filter(e -> !e.isFixed()).forEach(e -> this.level.setDestroyed(e.getPosition()));
-		time = System.nanoTime() - time;
-		System.out.println("Took " + time + " ns for clustering.");
 		
-		System.out.println("DEFORMATION!"); // DEBUG
+		System.out.println("DESTRUCTION!"); // DEBUG
+		
+		this.nodeSet.filterNodes(this::prepareNodes);
+		
+		System.out.println("READY FOR NEXT STEP"); // DEBUG
+		
 	}
 	
 	private boolean filterExternalForceUpdated(FemNode node) {
@@ -120,16 +133,22 @@ public class FEM {
 		double norm = node.getForceBalanceNormSquared();
 		for (BlockPos adj : node.getAdjacentElements()) {
 			var prop = this.level.getBlockProperty(adj);
-			var limit = prop.getHardness() / 16;
-			if (norm > limit*limit && norm > 0.05*0.05 && limit > 0) return true;
+			var mass = prop.getMass();
+			var limit = mass / 4;
+			if (norm > limit*limit && this.isResistiveBlock(mass)) return true;
 		}
 		return false;
+	}
+	
+	private boolean isResistiveBlock(double mass) {
+		return mass > 0.004;
 	}
 	
 	private void markAdjacentElements(FemNode node) {
 		var pos = node.getPosition();
 		for (var adj : FemNode.getAdjacentElementOffsets()) {
-			this.elementSet.markAsUpdateTarget(pos.offset(adj));
+			var p = pos.offset(adj);
+			if (!this.level.isCurrentlyAirAt(p)) this.elementSet.markAsUpdateTarget(p);
 		}
 	}
 	
@@ -216,18 +235,16 @@ public class FEM {
 	private void computeInternalForce(FemNode node) {
 		BlockPos nodePosition = node.getPosition();
 		var nodeDisplacement = node.getDisp();
-		
 		var intForce = new double[3];
 		for (var elementOffset : NeighbourElement.values()) {
 			
 			var elementPosition = nodePosition.offset(elementOffset.getOffset());
-			var element = this.elementSet.getElementAt(elementPosition);
 			var elasticProperty = this.level.getBlockProperty(elementPosition);
 			var mass = elasticProperty.getMass();
 			
 			for (var intPt : IntPoint.values()) {
 				
-				double[][] sigma = element.getSigmaAt(intPt);
+				double[][] sigma = elementSet.getStrainAt(elementPosition, intPt);
 				
 				double[] partial = new double[3]; // partial_j
 				partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
@@ -254,6 +271,41 @@ public class FEM {
 		node.setInternalForce(intForce[0], intForce[1], intForce[2]);
 	}
 	
+	private void computeInternalForceFromElement(FemNode node, NeighbourElement elementOffset, double[] intForce) {
+		BlockPos nodePosition = node.getPosition();
+		var nodeDisplacement = node.getDisp();
+		
+		var elementPosition = nodePosition.offset(elementOffset.getOffset());
+		var elasticProperty = this.level.getBlockProperty(elementPosition);
+		var mass = elasticProperty.getMass();
+		
+		for (var intPt : IntPoint.values()) {
+			
+			double[][] sigma = elementSet.getStrainAt(elementPosition, intPt);
+			
+			double[] partial = new double[3]; // partial_j
+			partial[0] = ShapeFunc.partial(elementOffset.getNodeVertex(), 0, intPt);
+			partial[1] = ShapeFunc.partial(elementOffset.getNodeVertex(), 1, intPt);
+			partial[2] = ShapeFunc.partial(elementOffset.getNodeVertex(), 2, intPt);
+			
+			// elastic component
+			for (int j = 0; j < 3; j++) {
+				var del = partial[j];
+				intForce[0] += sigma[j][0] * del;
+				intForce[1] += sigma[j][1] * del;
+				intForce[2] += sigma[j][2] * del;
+			}
+			intForce[0] += sigma[0][0] * partial[0];
+			intForce[1] += sigma[1][1] * partial[1];
+			intForce[2] += sigma[2][2] * partial[2];
+			
+		}
+		// inertial component
+		intForce[0] += mass * nodeDisplacement.x();
+		intForce[1] += mass * nodeDisplacement.y();
+		intForce[2] += mass * nodeDisplacement.z();
+	}
+	
 	private FemNode computeInitialDisplacement(FemNode node) {
 		BlockPos pos0 = node.getPosition();
 		
@@ -278,7 +330,7 @@ public class FEM {
 		double dx = invJacobian[0][0] * node.getExForceX() + invJacobian[0][1] * node.getExForceY() + invJacobian[0][2] * node.getExForceZ();
 		double dy = invJacobian[1][0] * node.getExForceX() + invJacobian[1][1] * node.getExForceY() + invJacobian[1][2] * node.getExForceZ();
 		double dz = invJacobian[2][0] * node.getExForceX() + invJacobian[2][1] * node.getExForceY() + invJacobian[2][2] * node.getExForceZ();
-		node.setDisplacement(dx, dy, dz, 1.0d);
+		node.addDisplacement(dx, dy, dz, 1.0d);
 		return node;
 	}
 	
@@ -322,25 +374,22 @@ public class FEM {
 			if (elem.belongToCluster()) return;
 			BlockCluster cluster = new BlockCluster();
 			if(!elem.setCluster(cluster)) return; // already added to a group
-			
 			GroupResult summary;
 			if (!elem.isElasticallyDeforming()) {
 				ConcurrentLinkedQueue<FemElement> queue = new ConcurrentLinkedQueue<>();
 				queue.add(elem); // the first element
 				summary = GroupResult.empty();
 				while (!queue.isEmpty()) {
-					queue.spliterator();
 					summary = Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull) // poll elements till the queue is empty
 							.map(e -> this.searchBlockGrouping(e, cluster, queue))
 							.reduce(summary, (s1, s2) -> s1.add(s2));
 				}
 			} else { // this block only
 				summary = this.analyseElementStatus(elem);
-				summary.fixed = false; // force destruction
+				summary.setFixed(false); // force destruction
 			}
 			
-			cluster.setFixed(summary.fixed);
-			// TODO: set result to block cluster
+			cluster.setResult(summary);
 		});
 	}
 	
@@ -373,37 +422,40 @@ public class FEM {
 			inertia[1] += mass * displacement.y();
 			inertia[2] += mass * displacement.z();
 		}
-		
-		return new GroupResult(fixed, inertia);
+
+		return new GroupResult(fixed, this.isResistiveBlock(mass), inertia,
+				elem.pressForceXNeg, elem.pressForceXPos,
+				elem.pressForceYNeg, elem.pressForceYPos,
+				elem.pressForceZNeg, elem.pressForceZPos);
 	}
 	
-	private static class GroupResult {
-		private boolean fixed = false;
-		private double[] inertia = new double[3];
-		private int depth;
+	// ======== prepare for next ray trace iteration ========
+	
+	private boolean prepareNodes(FemNode node) {
+		/* Check elements adjacent to each nodes.
+		 * Subtract internal force imposed by distracted element and add compensating external force.
+		 * Node fill be removed if all the surrounding elements are to be destroyed.
+		 * Solver status will be cleared from all the nodes.
+		 */
+		BlockPos pos = node.getPosition();
 		
-		public GroupResult(boolean fixed, double[] inertia) {
-			this.fixed = fixed;
-			this.inertia = inertia;
+		boolean remove = true;
+		double[] intForce = new double[3];
+		for (var elementOffset : NeighbourElement.values()) {
+			var p = pos.offset(elementOffset.getOffset());
+			if (elementSet.isTobeDestroyed(p)) {
+				this.computeInternalForceFromElement(node, elementOffset, intForce);
+			} else {
+				remove = false;
+			}
 		}
-		
-		public static GroupResult empty() {
-			return new GroupResult(false, new double[3]);
-		}
-		
-		public GroupResult add(GroupResult other) {
-			this.fixed |= other.fixed;
-			var inertia = other.inertia;
-			this.inertia[0] += inertia[0];
-			this.inertia[1] += inertia[1];
-			this.inertia[2] += inertia[2];
-			this.depth = Math.max(this.depth, other.depth);
-			return this;
-		}
-		
-		@Override
-		public String toString() {
-			return "fix=" + this.fixed + ",in=" + this.inertia; 
-		}
+		node.addExternalForce(-intForce[0], -intForce[1], -intForce[2]);
+		node.addInternalForce(-intForce[0], -intForce[1], -intForce[2]);
+		node.prepareForNextRayStep();
+		return remove; // returning true will remove the node.
+	}
+	
+	public double getTransmission(BlockPos hitBlock, Direction pressureDirection) {
+		return this.elementSet.getElementAt(hitBlock).getTransmittance(pressureDirection);
 	}
 }

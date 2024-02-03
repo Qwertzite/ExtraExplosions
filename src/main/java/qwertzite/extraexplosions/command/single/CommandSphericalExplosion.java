@@ -1,4 +1,4 @@
-package qwertzite.extraexplosions.exp.spherical;
+package qwertzite.extraexplosions.command.single;
 
 import com.mojang.brigadier.Command;
 

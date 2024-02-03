@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.exp.barostrain;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import net.minecraft.core.BlockPos;
@@ -12,7 +13,7 @@ public class NodeSet {
 	private final Map<BlockPos, FemNode> map = new ConcurrentHashMap<>();
 	
 	public void add(BlockPos key, double x, double y, double z) {
-		IForceAccumlator wrapper = this.getNodeAt(key);
+		FemNode wrapper = this.getNodeAt(key);
 		synchronized (wrapper) {
 			wrapper.addExternalForce(x, y, z);
 		}
@@ -36,5 +37,13 @@ public class NodeSet {
 	
 	public void markToBeUpdated(BlockPos node) {
 		this.getNodeAt(node).markToBeUpdatedInternalForce();
+	}
+	
+	/**
+	 * Intended to be used after destruction process and prepare for a next pressure computation.
+	 * @param predicate returns true for nodes to be removed.
+	 */
+	public void filterNodes(Predicate<FemNode> predicate) {
+		map.values().removeIf(predicate);
 	}
 }

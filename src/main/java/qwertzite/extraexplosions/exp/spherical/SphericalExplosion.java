@@ -79,7 +79,7 @@ public class SphericalExplosion extends EeExplosionBase {
 			levelCache.getBlockProperty(new BlockPos(this.getPosition())); // load block at the centre to reduce race conditions.
 			var tmp = trigonals;
 			while (!tmp.isEmpty()) {
-				DebugRenderer.addRays(tmp.parallelStream().map(ray -> ray.trigonal()).collect(Collectors.toSet()));
+//				DebugRenderer.addRays(tmp);
 				tmp = tmp.parallelStream().<ExplosionRay>flatMap(
 						ray -> {
 							try {
