@@ -1,12 +1,11 @@
 package qwertzite.extraexplosions.exp.barostrain;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
 
 import com.mojang.datafixers.util.Pair;
@@ -55,7 +54,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 	@Override
 	public void explode() {
 		
-		DebugRenderer.clear();
+		Set<PressureRay> rays = ConcurrentHashMap.newKeySet();
+		
 		double division = 1.0d * 1d; // TODO: バニラと同じくらいになるように調整する
 		
 		this.level.gameEvent(this.source, GameEvent.EXPLODE, new Vec3(this.x, this.y, this.z));
@@ -73,19 +73,30 @@ public class BaroStrainExplosion extends EeExplosionBase {
 					.forEach(ray -> queue.add(new PressureRay(ray, this.radius, division)));
 			
 			while (!queue.isEmpty()) {
+				fem.prepare();
+				
 				// ray tracing till all the rays hit a block or diminish.
 				while (!queue.isEmpty()) {
 					Stream.generate(() -> queue.poll()).parallel().takeWhile(Objects::nonNull)
-					.forEach(ray -> this.rayTraceStep(ray, fem, levelCache, hitRays).forEach(queue::offer));
+					.forEach(ray -> { rays.add(ray); this.rayTraceStep(ray, fem, levelCache, hitRays, queue); });
 				}
 				
 				fem.compute(); // FEM computation
 				
 				// reflected or transmitted rays.
-				hitRays.entrySet().parallelStream().forEach(e -> {});
-				// TODO: ここから hitRays -> entries
+				hitRays.entrySet().parallelStream().forEach(e -> {
+					var ray = e.getKey();
+					var hit = e.getValue();
+					var transmission = fem.getTransmission(hit.hitBlock(), hit.pressureDirection());
+					var reflection = 1.0d - transmission;
+					if (transmission > 0.0d) queue.offer(ray.transmitted(transmission, hit.hitDistance(), hit.hitPos()));
+					if (reflection > 0.0d) queue.offer(ray.reflected(reflection, hit.hitDistance(), hit.hitFace().getAxis(), hit.hitPos()));
+				});
+				hitRays.clear();
 			}
 		});
+		DebugRenderer.clear();
+		DebugRenderer.addRays(rays);
 		DebugRenderer.addVertexDisplacement(levelCache, fem.getNodeSet(), fem.getElementSet());
 		
 		this.toBlow.addAll(levelCache.getDestroyeds());
@@ -93,7 +104,7 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		System.out.println("boom! A");
 	}
 	
-	private Stream<PressureRay> rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess, ConcurrentHashMap<PressureRay, PressureTraceResult> hitRays) {
+	private void rayTraceStep(PressureRay ray, FEM fem, BarostrainLevelCache levelAccess, ConcurrentHashMap<PressureRay, PressureTraceResult> hitRays, ConcurrentLinkedQueue<PressureRay> nextStep) {
 		var from = ray.trigonal().from();
 		var to = ray.trigonal().to();
 		
@@ -108,24 +119,19 @@ public class BaroStrainExplosion extends EeExplosionBase {
 		}
 		
 		if (traceResult != null) {
-			double distance = from.distanceTo(traceResult.hitPos());
+			double distance = traceResult.hitDistance();
 			double pressure = ray.computePressureAt(distance) * (internal ? -1 : 1);
 			
 			if (pressure > 0.0d) {
 				fem.applyPressure(traceResult.hitBlock(), traceResult.hitFace(), pressure);
 				hitRays.put(ray, traceResult);
 			}
-			
-			return Stream.empty(); // TODO: reflected rays and transmitted rays
+			return;
 		}
 		
 		double rayLength = from.distanceTo(to);
-		if (ray.computePressureAt(rayLength) <= 0.0d) return Stream.empty();
-		RayTrigonal[] nextTrigonals = ray.trigonal().divide();
-		double nextDivision = ray.division() / 4.0d;
-		double travelled = ray.travelledDistance() + rayLength;
-		int nextDivStep = ray.divStep() + 1;
-		return Arrays.stream(nextTrigonals).map(t -> new PressureRay(t, ray.intencity(), nextDivision, travelled, nextDivStep, false));
+		if (ray.computePressureAt(rayLength) <= 0.0d) return;
+		ray.offerNextStep(rayLength, nextStep);
 	}
 	
 	private PressureTraceResult internalPressureTrace(Vec3 from, Vec3 to, BarostrainLevelCache levelAccess) {
@@ -211,7 +217,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 				(to.z() - currentZ) * normDirZ;
 		if (distToEnd < len) return null; // reached the end of this ray before reaching another block bound.
 		
-		return new PressureTraceResult(pos, hitFace, new Vec3(nextX, nextY, nextZ));
+		var hitPos = new Vec3(nextX, nextY, nextZ);
+		return new PressureTraceResult(pos, hitFace, hitPos, from.distanceTo(hitPos), true);
 	}
 	
 	
@@ -306,7 +313,8 @@ public class BaroStrainExplosion extends EeExplosionBase {
 			BlockPos pos = new BlockPos(blockX, blockY, blockZ);
 			
 			if (!levelAccess.isCurrentlyAirAt(pos)) {
-				return new PressureTraceResult(pos, hitFace, new Vec3(nextX, nextY, nextZ));
+				var hitPos = new Vec3(nextX, nextY, nextZ);
+				return new PressureTraceResult(pos, hitFace, hitPos, from.distanceTo(hitPos), false);
 			}
 			
 			

@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.util.math;
 
 import java.util.Random;
 
+import net.minecraft.core.Direction.Axis;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -117,6 +118,26 @@ public class EeMath {
 		case 2 -> vec.z();
 		default -> throw new IllegalArgumentException("Unexpected value: " + i);
 		};
+	}
+	
+	public static Vec3 invertAxis(Vec3 vec, Axis axis) {
+		return switch (axis) {
+		case X -> new Vec3(-vec.x(), vec.y(), vec.z());
+		case Y -> new Vec3( vec.x(),-vec.y(), vec.z());
+		case Z -> new Vec3( vec.x(), vec.y(),-vec.z());
+		};
+	}
+	
+	public static Vec3 invertAxis(Vec3 vec, Axis axis, Vec3 at) {
+		return switch (axis) {
+		case X -> new Vec3(invert(vec.x(), at.x()),                vec.y(),                vec.z());
+		case Y -> new Vec3(                vec.x(),invert(vec.y(), at.y()),                vec.z());
+		case Z -> new Vec3(                vec.x(),                vec.y(),invert(vec.z(), at.z()));
+		};
+	}
+	
+	private static double invert(double value, double coord) {
+		return coord + coord - value;
 	}
 	
 	public static double[][] inverseMatrix(double[][] mat) {

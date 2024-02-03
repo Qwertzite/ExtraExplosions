@@ -3,6 +3,7 @@ package qwertzite.extraexplosions.exp.barostrain;
 import java.util.EnumSet;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Direction.Axis;
 
 public class FemElement {
@@ -93,6 +94,16 @@ public class FemElement {
 	public boolean isFixed() {
 		return this.cluster.isFixed();
 	}
+	
+	/**
+	 * 
+	 * @param direction the direction of the force applied by pressure.
+	 * @return
+	 */
+	public double getTransmittance(Direction direction) {
+		return this.cluster != null ?  this.cluster.transmittance(direction) : 0.0d;
+	}
+	
 	
 	// ======== For next FEM computation ========
 	

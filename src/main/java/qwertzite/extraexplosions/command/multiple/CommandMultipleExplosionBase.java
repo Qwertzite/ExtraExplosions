@@ -27,7 +27,7 @@ public abstract class CommandMultipleExplosionBase {
 	
 	public static void tick(LevelTickEvent event) {
 		if (event.phase == TickEvent.Phase.START) {
-			ENTRIES.removeIf(Entry::tick);
+			ENTRIES.removeIf(e -> e.tick(event.level));
 		}
 	}
 	
@@ -67,6 +67,8 @@ public abstract class CommandMultipleExplosionBase {
 	protected CommandRegister baseInit(String explosionTypeName) {
 		
 		return CommandRegister.$("bombard", explosionTypeName, ctx -> {
+			System.out.println("executed");
+			
 			double x1 = this.posX1.getValue();
 			double z1 = this.posZ1.getValue();
 			double x2 = this.posX2.getValue();
@@ -80,7 +82,7 @@ public abstract class CommandMultipleExplosionBase {
 			
 			var explosion = this.explosionProvider(ctx);
 			var bb = new AABB(x1, height, z1, x2, height, z2);
-			var count = single ? 1 : EeMath.randomRound(spread * bb.getXsize() * bb.getZsize(), level.getRandom());
+			var count = single ? 1 : Math.max(1, EeMath.randomRound(spread * bb.getXsize() * bb.getZsize(), level.getRandom()));
 			
 			ENTRIES.add(new Entry(level, count, explosion, bb, rate));
 			
@@ -102,6 +104,7 @@ public abstract class CommandMultipleExplosionBase {
 		private final AABB range;
 		private final float rate;
 		
+		private final int totalCount;
 		private int count;
 		private float timer = 0.0f;
 		
@@ -117,7 +120,8 @@ public abstract class CommandMultipleExplosionBase {
 			this.level = level;
 			this.explosion = explosion;
 			this.range = range;
-			this.rate = 1.0f/20 / interval;
+			this.rate = 1.0f/ (20 * interval);
+			this.totalCount = count;
 			this.count = count;
 			assert(interval > 0.0f);
 		}
@@ -126,14 +130,10 @@ public abstract class CommandMultipleExplosionBase {
 		 * 
 		 * @return true if completed
 		 */
-		public boolean tick() {
+		public boolean tick(Level level) {
+			if (this.level != level) return false;
+			
 			for (;this.timer >= 0.0f; timer -= 1.0f) {
-				if (this.count-- <= 0) {
-					ModLog.info("Finished causing explosions.");
-					return true;
-				}
-				System.out.println(count);
-				
 				try {
 					int posX = Mth.floor(Mth.lerp(this.level.getRandom().nextDouble(), this.range.minX, this.range.maxX));
 					int posZ = Mth.floor(Mth.lerp(this.level.getRandom().nextDouble(), this.range.minZ, this.range.maxZ));
@@ -142,6 +142,11 @@ public abstract class CommandMultipleExplosionBase {
 					this.explosion.accept(new Vec3(posX, elev + range.minY, posZ));
 				} catch(Exception e) {
 					ModLog.error("Caught an exception while causing explosion. Aborting bombardment.", e);
+					return true;
+				}
+				this.count--;
+				if (this.count <= 0) {
+					ModLog.info("Finished causing %d explosions", this.totalCount);
 					return true;
 				}
 			}

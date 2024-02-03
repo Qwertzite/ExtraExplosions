@@ -17,21 +17,20 @@ import com.mojang.math.Matrix4f;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import qwertzite.extraexplosions.exmath.RayTrigonal;
 import qwertzite.extraexplosions.exp.barostrain.BarostrainLevelCache;
 import qwertzite.extraexplosions.exp.barostrain.ElementSet;
 import qwertzite.extraexplosions.exp.barostrain.FemElement;
 import qwertzite.extraexplosions.exp.barostrain.FemNode;
 import qwertzite.extraexplosions.exp.barostrain.IntPoint;
 import qwertzite.extraexplosions.exp.barostrain.NodeSet;
+import qwertzite.extraexplosions.exp.barostrain.PressureRay;
 
 public class DebugRenderer {
 	
-	private static final Set<RayTrigonal> RAY_TRIAGONALS = new HashSet<>();
+	private static final Set<PressureRay> RAY_TRIAGONALS = new HashSet<>();
 	private static final Set<BlockPos> RENDER_TARGET = new HashSet<>();
 	private static NodeSet nodeSet = new NodeSet();
 	private static ElementSet elementSet = new ElementSet();
@@ -46,7 +45,7 @@ public class DebugRenderer {
 		}
 	}
 	
-	public static void addRays(Set<RayTrigonal> rays) {
+	public static void addRays(Set<PressureRay> rays) {
 		synchronized (RAY_TRIAGONALS) {
 			RAY_TRIAGONALS.addAll(rays);
 		}
@@ -107,17 +106,24 @@ public class DebugRenderer {
 		
 		bufferbuilder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
 		synchronized (RAY_TRIAGONALS) {
-			for (RayTrigonal ray : RAY_TRIAGONALS) {
-				Vec3 s0 = ray.v1().add(ray.origin());
-				Vec3 s1 = ray.v2().add(ray.origin());
-				Vec3 s2 = ray.v3().add(ray.origin());
-				float alpha = 0.1f;
-				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
-				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
-				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
-				bufferbuilder.vertex(mat, (float) s2.x, (float) s2.y, (float) s2.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
-				bufferbuilder.vertex(mat, (float) s2.x, (float) s2.y, (float) s2.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
-				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 1.0f, 0.0f, alpha).endVertex();
+			for (PressureRay ray : RAY_TRIAGONALS) {
+				var trigonal = ray.trigonal();
+				Vec3 s0 = trigonal.v1().add(trigonal.origin());
+				Vec3 s1 = trigonal.v2().add(trigonal.origin());
+				Vec3 s2 = trigonal.v3().add(trigonal.origin());
+				float alpha = 0.05f;
+				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				bufferbuilder.vertex(mat, (float) s1.x, (float) s1.y, (float) s1.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				bufferbuilder.vertex(mat, (float) s2.x, (float) s2.y, (float) s2.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				bufferbuilder.vertex(mat, (float) s2.x, (float) s2.y, (float) s2.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				bufferbuilder.vertex(mat, (float) s0.x, (float) s0.y, (float) s0.z).color(0.0f, 0.99f, 0.0f, alpha).endVertex();
+				if (ray.divStep() == 0) {
+					Vec3 from = trigonal.from();
+					Vec3 to = trigonal.to();
+					bufferbuilder.vertex(mat, (float) from.x, (float) from.y, (float) from.z).color(1.0f, 1.0f, 1.0f, 1).endVertex();
+					bufferbuilder.vertex(mat, (float) to.x, (float) to.y, (float) to.z).color(1.0f, 0.5f, 0.5f, 0.0f).endVertex();
+				}
 			}
 		}
 		BufferUploader.drawWithShader(bufferbuilder.end());

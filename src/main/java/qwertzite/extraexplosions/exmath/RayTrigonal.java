@@ -2,6 +2,7 @@ package qwertzite.extraexplosions.exmath;
 
 import java.util.stream.Stream;
 
+import net.minecraft.core.Direction.Axis;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 import qwertzite.extraexplosions.util.math.EeMath;
@@ -131,4 +132,21 @@ public record RayTrigonal(Vec3 origin, Vec3 v1, Vec3 v2, Vec3 v3, Vec3 from, Vec
 		};
 	}
 	
+	public RayTrigonal setFromVec(Vec3 from) {
+		return new RayTrigonal(this.origin, this.v1, this.v2, this.v3, from, this.to);
+	}
+	
+	public RayTrigonal inverted(Axis plane, Vec3 from) {
+		// origin -> from　を中心に反転
+		// v1, v2, v3 反転
+		// from: from
+		// to: from を中心に反転
+		return new RayTrigonal(
+				EeMath.invertAxis(this.origin(), plane, from),
+				EeMath.invertAxis(this.v1(), plane),
+				EeMath.invertAxis(this.v2(), plane),
+				EeMath.invertAxis(this.v3(), plane),
+				from,
+				EeMath.invertAxis(this.to(), plane, from));
+	}
 }

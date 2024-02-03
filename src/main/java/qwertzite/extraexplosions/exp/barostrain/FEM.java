@@ -7,6 +7,7 @@ import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
+import qwertzite.extraexplosions.exp.barostrain.BlockCluster.GroupResult;
 import qwertzite.extraexplosions.util.math.EeMath;
 
 public class FEM {
@@ -20,6 +21,11 @@ public class FEM {
 	public FEM(BarostrainLevelCache level) {
 //	public FEM(CachedLevelAccessWrapper level) {
 		this.level = level;
+	}
+	
+	public void prepare() {
+		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearElementStatus);
+		// element status must be preserved when FEM#compute is completed to calculate destruction.
 	}
 	
 	/**
@@ -71,14 +77,13 @@ public class FEM {
 		}
 		
 		// imposes force toward negative direction when pressure is applied on the positive face of a block.
-		elementSet.getElementAt(pos).addPressureForce(face.getAxis(), - face.getAxisDirection().getStep() * pressure);
+		elementSet.getElementAt(pos).addPressureForce(face.getAxis(), - face.getAxisDirection().getStep() * pressure * 4);
 	}
 	
 	public void compute() {
 		System.out.println("BEGIN FEM!"); // DEBUG
-		this.elementSet.getElements().values().parallelStream().forEach(FemElement::clearElementStatus);
 		
-		long count = this.nodeSet.stream() // OPTIMISE: parallel
+		long count = this.nodeSet.stream().parallel() // OPTIMISE: parallel
 				.filter(e -> {
 					if (!this.filterExternalForceUpdated(e) || !this.isForceImbalanceAt(e)) return false;
 					this.markAdjacentElements(e);
@@ -381,11 +386,10 @@ public class FEM {
 				}
 			} else { // this block only
 				summary = this.analyseElementStatus(elem);
-				summary.fixed = false; // force destruction
+				summary.setFixed(false); // force destruction
 			}
 			
-			cluster.setFixed(summary.fixed);
-			// TODO: set result to block cluster
+			cluster.setResult(summary);
 		});
 	}
 	
@@ -418,62 +422,11 @@ public class FEM {
 			inertia[1] += mass * displacement.y();
 			inertia[2] += mass * displacement.z();
 		}
+
 		return new GroupResult(fixed, this.isResistiveBlock(mass), inertia,
 				elem.pressForceXNeg, elem.pressForceXPos,
 				elem.pressForceYNeg, elem.pressForceYPos,
 				elem.pressForceZNeg, elem.pressForceZPos);
-	}
-	
-	private static class GroupResult {
-		private boolean fixed = false;
-		private boolean resistive = false; // can reflect blast. (i.e. has non-zero mass)
-		private double[] inertia = new double[3];
-		private int depth;
-		private double extForceXPos;
-		private double extForceXNeg;
-		private double extForceYPos;
-		private double extForceYNeg;
-		private double extForceZPos;
-		private double extForceZNeg;
-		
-		public GroupResult(boolean fixed, boolean resistive, double[] inertia,
-				double xn, double xp, double yn, double yp, double zn, double zp) {
-			this.fixed = fixed;
-			this.inertia = inertia;
-			this.resistive = resistive;
-			this.extForceXNeg = xn;
-			this.extForceXPos = xp;
-			this.extForceYNeg = yn;
-			this.extForceYPos = yp;
-			this.extForceZNeg = zn;
-			this.extForceZPos = zp;
-		}
-		
-		public static GroupResult empty() {
-			return new GroupResult(false, false, new double[3], 0, 0, 0, 0, 0, 0);
-		}
-		
-		public GroupResult add(GroupResult other) {
-			this.fixed |= other.fixed;
-			this.resistive |= other.resistive;
-			var inertia = other.inertia;
-			this.inertia[0] += inertia[0];
-			this.inertia[1] += inertia[1];
-			this.inertia[2] += inertia[2];
-			this.depth = Math.max(this.depth, other.depth);
-			this.extForceXNeg += other.extForceXNeg;
-			this.extForceXPos += other.extForceXPos;
-			this.extForceYNeg += other.extForceYNeg;
-			this.extForceYPos += other.extForceYPos;
-			this.extForceZNeg += other.extForceZNeg;
-			this.extForceZPos += other.extForceZPos;
-			return this;
-		}
-		
-		@Override
-		public String toString() {
-			return "fix=" + this.fixed + ",in=" + this.inertia; 
-		}
 	}
 	
 	// ======== prepare for next ray trace iteration ========
@@ -500,5 +453,9 @@ public class FEM {
 		node.addInternalForce(-intForce[0], -intForce[1], -intForce[2]);
 		node.prepareForNextRayStep();
 		return remove; // returning true will remove the node.
+	}
+	
+	public double getTransmission(BlockPos hitBlock, Direction pressureDirection) {
+		return this.elementSet.getElementAt(hitBlock).getTransmittance(pressureDirection);
 	}
 }
